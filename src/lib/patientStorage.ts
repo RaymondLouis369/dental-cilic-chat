@@ -356,6 +356,10 @@ export function getStoredPatients(): Patient[] {
   return raw ? JSON.parse(raw) : SEED_PATIENTS;
 }
 
+export function setStoredPatients(patients: Patient[]): void {
+  safeStorage.setItem(PATIENT_STORAGE_KEYS.PATIENTS, JSON.stringify(patients));
+}
+
 export function getStoredGuardians(): GuardianRelationship[] {
   initializePatientStorage();
   const raw = safeStorage.getItem(PATIENT_STORAGE_KEYS.GUARDIANS);
@@ -877,4 +881,9 @@ export function linkPatientToFamilyUnit(
   safeStorage.setItem(PATIENT_STORAGE_KEYS.FAMILY_MEMBERS, JSON.stringify(familyMembers));
   return true;
 }
+
+export function getPatientById(id: string): Patient | undefined {
+  return getStoredPatients().find((p) => p.id === id);
+}
+
 

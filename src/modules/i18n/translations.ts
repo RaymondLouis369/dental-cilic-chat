@@ -25,18 +25,23 @@ export const translations = {
     // Navigation & Placeholders
     nav: {
       dashboard: 'لوحة المؤشرات',
+      reception: 'مكتب الاستقبال والمواعيد',
+      scheduling: 'جداول ومناوبات الأطباء',
+      services: 'كتالوج الخدمات الطبية',
+      pricing: 'قوائم الأسعار النقدية والإكسل',
+      insurance: 'شركات وخطط التأمين',
+      customServices: 'مراجعة الأسعار المخصصة',
       organization: 'إعدادات المؤسسة',
       branches: 'فروع عيادات الأسنان',
       users: 'فريق العمل والمستخدمين',
       permissions: 'سجل الصلاحيات',
       audit: 'سجل الرقابة والأمان',
       operations: 'العمليات التشغيلية (مرحلة قادمة)',
-      reception: 'مكتب الاستقبال (مرحلة قادمة)',
       doctorWorkspace: 'عيادة الطبيب (مرحلة قادمة)',
       labCoordination: 'تنسيق التركيبات والمعامل (مرحلة قادمة)',
       labWorkspace: 'معمل الأسنان (مرحلة قادمة)',
       deliveryWorkspace: 'اللوجستيات والتوصيل (مرحلة قادمة)',
-      testsRunner: 'فحص واختبارات المرحلة الأولى',
+      testsRunner: 'فحص واختبارات النظام',
     },
 
     // Auth
@@ -387,18 +392,23 @@ export const translations = {
     // Navigation & Placeholders
     nav: {
       dashboard: 'Dashboard',
+      reception: 'Reception & Appointments',
+      scheduling: 'Doctor Shifts & Schedules',
+      services: 'Service Catalog',
+      pricing: 'Cash Price Lists & Excel',
+      insurance: 'Insurance & Card Templates',
+      customServices: 'Custom Services Review',
       organization: 'Organization Settings',
       branches: 'Dental Branches',
       users: 'Staff & Internal Users',
       permissions: 'Permissions Registry',
       audit: 'Audit Log',
       operations: 'Operations (Future Phase)',
-      reception: 'Reception Workspace (Future Phase)',
       doctorWorkspace: 'Doctor Workspace (Future Phase)',
       labCoordination: 'Prosthetic / Lab Coordination (Future Phase)',
       labWorkspace: 'Dental Lab Workspace (Future Phase)',
       deliveryWorkspace: 'Delivery Workspace (Future Phase)',
-      testsRunner: 'Phase 1 Acceptance Tests',
+      testsRunner: 'Acceptance Tests',
     },
 
     // Auth

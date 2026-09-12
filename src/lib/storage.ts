@@ -446,6 +446,26 @@ export function getStoredAuditLogs(userProfile: Profile): AuditLog[] {
   return simulateDatabaseRLS(userProfile, logs, 'audit_logs');
 }
 
+export function getStoredBranches(userProfile?: Profile): Branch[] {
+  const raw = safeStorage.getItem(STORAGE_KEYS.BRANCHES);
+  const branches: Branch[] = raw ? JSON.parse(raw) : [...DEFAULT_BRANCHES, SECONDARY_BRANCH];
+  if (userProfile) {
+    return simulateDatabaseRLS(userProfile, branches, 'branches');
+  }
+  return branches;
+}
+
+export function getStoredStaffUsers(organizationId?: string): Profile[] {
+  const raw = safeStorage.getItem(STORAGE_KEYS.PROFILES);
+  const profiles: Profile[] = raw
+    ? JSON.parse(raw)
+    : Object.values(DEMO_STAFF_CREDENTIALS).map((c) => c.profile);
+  if (organizationId) {
+    return profiles.filter((p) => p.organization_id === organizationId);
+  }
+  return profiles;
+}
+
 export function appendAuditLog(log: Omit<AuditLog, 'id' | 'created_at'>): AuditLog {
   const newLog: AuditLog = {
     ...log,

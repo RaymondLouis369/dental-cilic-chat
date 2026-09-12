@@ -4,6 +4,7 @@ import { Language, Direction, translations } from './translations';
 interface LanguageContextType {
   language: Language;
   direction: Direction;
+  isRtl: boolean;
   setLanguage: (lang: Language) => void;
   toggleLanguage: () => void;
   t: typeof translations['ar'];
@@ -48,6 +49,7 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       value={{
         language,
         direction,
+        isRtl: direction === 'rtl',
         setLanguage,
         toggleLanguage,
         t,

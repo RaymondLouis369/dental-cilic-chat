@@ -20,6 +20,14 @@ import { WorkspacePlaceholder } from './components/WorkspacePlaceholder';
 import { AcceptanceTestRunner } from './components/AcceptanceTestRunner';
 import { OfflineIndicator } from './modules/pwa/OfflineIndicator';
 
+import { ReceptionDashboard } from './modules/reception/ReceptionDashboard';
+import { DoctorScheduleView } from './modules/scheduling/DoctorScheduleView';
+import { ServiceCatalogView } from './modules/services/ServiceCatalogView';
+import { CashPriceListView } from './modules/pricing/CashPriceListView';
+import { InsuranceManagementView } from './modules/insurance/InsuranceManagementView';
+import { CustomServicesReviewView } from './modules/pricing/CustomServicesReviewView';
+
+import { DoctorWorkspace } from './modules/clinical/DoctorWorkspace';
 import { PatientPortalShell } from './modules/patient-portal/PatientPortalShell';
 import { PatientLogin } from './modules/patient-portal/PatientLogin';
 
@@ -28,13 +36,28 @@ interface MainLayoutProps {
 }
 
 const MainLayout: React.FC<MainLayoutProps> = ({ onSwitchToPatient }) => {
-  const [currentTab, setCurrentTab] = useState<NavTab>('dashboard');
   const { session } = useAuth();
+  const [currentTab, setCurrentTab] = useState<NavTab>(() => {
+    if (session?.role.key === 'receptionist') return 'reception';
+    return 'dashboard';
+  });
 
   const renderContent = () => {
     switch (currentTab) {
       case 'dashboard':
         return <DashboardPlaceholder />;
+      case 'reception':
+        return <ReceptionDashboard />;
+      case 'scheduling':
+        return <DoctorScheduleView />;
+      case 'services':
+        return <ServiceCatalogView />;
+      case 'pricing':
+        return <CashPriceListView />;
+      case 'insurance':
+        return <InsuranceManagementView />;
+      case 'customServices':
+        return <CustomServicesReviewView />;
       case 'organization':
         return <OrganizationView />;
       case 'branches':
@@ -45,10 +68,8 @@ const MainLayout: React.FC<MainLayoutProps> = ({ onSwitchToPatient }) => {
         return <PermissionRegistryView />;
       case 'audit':
         return <AuditLogView />;
-      case 'reception':
-        return <WorkspacePlaceholder type="reception" />;
       case 'doctorWorkspace':
-        return <WorkspacePlaceholder type="doctorWorkspace" />;
+        return <DoctorWorkspace />;
       case 'labCoordination':
         return <WorkspacePlaceholder type="labCoordination" />;
       case 'labWorkspace':

@@ -37,7 +37,12 @@ export type PermissionKey =
   | 'permission.read'
   | 'permission.manage'
   | 'audit.read'
-  | 'patient.read'; // Prepared key for future phase
+  | 'patient.read'
+  | 'reception.manage'
+  | 'booking.create'
+  | 'booking.manage'
+  | 'pricing.manage'
+  | 'service.manage';
 
 export interface Permission {
   id: string;
@@ -87,9 +92,12 @@ export interface Profile {
   email: string;
   phone?: string;
   active: boolean;
+  branch_id?: string;
   created_at: string;
   updated_at: string;
 }
+
+export type StaffUser = Profile;
 
 export interface UserBranchScope {
   id: string;
@@ -135,3 +143,10 @@ export interface AuthUserSession {
 
 // Phase 2: Patient Identity & Portal Types
 export * from './patient';
+
+// Phase 3: Reception, Scheduling, Pricing, Insurance & Card Templates
+export * from './receptionAndBilling';
+
+// Phase 4: Doctor Clinical Workspace, Dental Chart, Treatment Plans, Notes & Orders
+export * from './clinical';
+

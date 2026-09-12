@@ -14,6 +14,10 @@ import {
   Truck,
   CheckCircle,
   RefreshCw,
+  Clock,
+  FileSpreadsheet,
+  Shield,
+  Tag,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -22,13 +26,18 @@ import { RoleBadge } from './RoleBadge';
 
 export type NavTab =
   | 'dashboard'
+  | 'reception'
+  | 'scheduling'
+  | 'services'
+  | 'pricing'
+  | 'insurance'
+  | 'customServices'
   | 'organization'
   | 'branches'
   | 'users'
   | 'permissions'
   | 'audit'
   | 'operations'
-  | 'reception'
   | 'doctorWorkspace'
   | 'labCoordination'
   | 'labWorkspace'
@@ -54,53 +63,70 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, onSelectTab }) => 
       case 'center_manager':
         return [
           { id: 'dashboard' as NavTab, label: t.nav.dashboard, icon: LayoutDashboard },
+          { id: 'doctorWorkspace' as NavTab, label: t.nav.doctorWorkspace, icon: Stethoscope, badge: 'Phase 4' },
+          { id: 'reception' as NavTab, label: t.nav.reception, icon: UserCheck, badge: 'Phase 3' },
+          { id: 'scheduling' as NavTab, label: t.nav.scheduling, icon: CalendarDays },
+          { id: 'services' as NavTab, label: t.nav.services, icon: FileText },
+          { id: 'pricing' as NavTab, label: t.nav.pricing, icon: FileSpreadsheet },
+          { id: 'insurance' as NavTab, label: t.nav.insurance, icon: Shield },
+          { id: 'customServices' as NavTab, label: t.nav.customServices, icon: Tag },
           { id: 'organization' as NavTab, label: t.nav.organization, icon: Building2 },
           { id: 'branches' as NavTab, label: t.nav.branches, icon: GitBranch },
           { id: 'users' as NavTab, label: t.nav.users, icon: Users },
           { id: 'permissions' as NavTab, label: t.nav.permissions, icon: ShieldCheck },
           { id: 'audit' as NavTab, label: t.nav.audit, icon: FileText },
-          { id: 'tests' as NavTab, label: t.nav.testsRunner, icon: CheckCircle, badge: 'Phase 1' },
+          { id: 'tests' as NavTab, label: t.nav.testsRunner, icon: CheckCircle },
         ];
       case 'branch_manager':
         return [
           { id: 'dashboard' as NavTab, label: t.nav.dashboard, icon: LayoutDashboard },
+          { id: 'doctorWorkspace' as NavTab, label: t.nav.doctorWorkspace, icon: Stethoscope, badge: 'Phase 4' },
+          { id: 'reception' as NavTab, label: t.nav.reception, icon: UserCheck, badge: 'Phase 3' },
+          { id: 'scheduling' as NavTab, label: t.nav.scheduling, icon: CalendarDays },
+          { id: 'services' as NavTab, label: t.nav.services, icon: FileText },
+          { id: 'pricing' as NavTab, label: t.nav.pricing, icon: FileSpreadsheet },
+          { id: 'insurance' as NavTab, label: t.nav.insurance, icon: Shield },
           { id: 'branches' as NavTab, label: t.nav.branches, icon: GitBranch },
           { id: 'users' as NavTab, label: t.nav.users, icon: Users },
-          { id: 'operations' as NavTab, label: t.nav.operations, icon: CalendarDays },
-          { id: 'tests' as NavTab, label: t.nav.testsRunner, icon: CheckCircle, badge: 'Phase 1' },
+          { id: 'operations' as NavTab, label: t.nav.operations, icon: Clock },
+          { id: 'tests' as NavTab, label: t.nav.testsRunner, icon: CheckCircle },
         ];
       case 'receptionist':
         return [
+          { id: 'reception' as NavTab, label: t.nav.reception, icon: UserCheck, badge: 'Phase 3' },
           { id: 'dashboard' as NavTab, label: t.nav.dashboard, icon: LayoutDashboard },
-          { id: 'reception' as NavTab, label: t.nav.reception, icon: UserCheck },
-          { id: 'tests' as NavTab, label: t.nav.testsRunner, icon: CheckCircle, badge: 'Phase 1' },
+          { id: 'scheduling' as NavTab, label: t.nav.scheduling, icon: CalendarDays },
+          { id: 'doctorWorkspace' as NavTab, label: t.nav.doctorWorkspace, icon: Stethoscope },
+          { id: 'tests' as NavTab, label: t.nav.testsRunner, icon: CheckCircle },
         ];
       case 'doctor':
         return [
+          { id: 'doctorWorkspace' as NavTab, label: t.nav.doctorWorkspace, icon: Stethoscope, badge: 'Phase 4' },
           { id: 'dashboard' as NavTab, label: t.nav.dashboard, icon: LayoutDashboard },
-          { id: 'doctorWorkspace' as NavTab, label: t.nav.doctorWorkspace, icon: Stethoscope },
-          { id: 'tests' as NavTab, label: t.nav.testsRunner, icon: CheckCircle, badge: 'Phase 1' },
+          { id: 'reception' as NavTab, label: t.nav.reception, icon: UserCheck },
+          { id: 'scheduling' as NavTab, label: t.nav.scheduling, icon: CalendarDays },
+          { id: 'tests' as NavTab, label: t.nav.testsRunner, icon: CheckCircle },
         ];
       case 'prosthetic_coordinator':
         return [
           { id: 'dashboard' as NavTab, label: t.nav.dashboard, icon: LayoutDashboard },
           { id: 'labCoordination' as NavTab, label: t.nav.labCoordination, icon: Wrench },
-          { id: 'tests' as NavTab, label: t.nav.testsRunner, icon: CheckCircle, badge: 'Phase 1' },
+          { id: 'tests' as NavTab, label: t.nav.testsRunner, icon: CheckCircle },
         ];
       case 'lab_user':
         return [
           { id: 'labWorkspace' as NavTab, label: t.nav.labWorkspace, icon: FlaskConical },
-          { id: 'tests' as NavTab, label: t.nav.testsRunner, icon: CheckCircle, badge: 'Phase 1' },
+          { id: 'tests' as NavTab, label: t.nav.testsRunner, icon: CheckCircle },
         ];
       case 'delivery_user':
         return [
           { id: 'deliveryWorkspace' as NavTab, label: t.nav.deliveryWorkspace, icon: Truck },
-          { id: 'tests' as NavTab, label: t.nav.testsRunner, icon: CheckCircle, badge: 'Phase 1' },
+          { id: 'tests' as NavTab, label: t.nav.testsRunner, icon: CheckCircle },
         ];
       default:
         return [
           { id: 'dashboard' as NavTab, label: t.nav.dashboard, icon: LayoutDashboard },
-          { id: 'tests' as NavTab, label: t.nav.testsRunner, icon: CheckCircle, badge: 'Phase 1' },
+          { id: 'tests' as NavTab, label: t.nav.testsRunner, icon: CheckCircle },
         ];
     }
   };

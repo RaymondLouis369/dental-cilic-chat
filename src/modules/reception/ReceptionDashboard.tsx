@@ -1,0 +1,794 @@
+import React, { useState, useMemo, useEffect } from 'react';
+import {
+  Calendar,
+  Clock,
+  UserCheck,
+  Plus,
+  Search,
+  QrCode,
+  CheckCircle,
+  AlertCircle,
+  Stethoscope,
+  Building2,
+  Users,
+  ChevronDown,
+  XCircle,
+  FileText,
+  FileEdit,
+  ArrowRight,
+  Filter,
+  Phone,
+  Shield,
+  Tag,
+} from 'lucide-react';
+import { useAuth } from '../auth/AuthContext';
+import { useLanguage } from '../i18n/LanguageContext';
+import {
+  getStoredAppointments,
+  getStoredWaitingList,
+  getStoredServices,
+  updateAppointmentStatus,
+  updateWaitingListStatus,
+} from '../../lib/receptionAndBillingStorage';
+import { getStoredPatients } from '../../lib/patientStorage';
+import { getStoredBranches, getStoredStaffUsers } from '../../lib/storage';
+import { Appointment, WaitingListEntry, Service } from '../../types/receptionAndBilling';
+import { Patient } from '../../types/patient';
+import { StaffUser, Branch } from '../../types';
+
+import { NewBookingModal } from './NewBookingModal';
+import { WalkInModal } from './WalkInModal';
+import { PatientLookupModal } from './PatientLookupModal';
+import { CustomServiceModal } from './CustomServiceModal';
+
+export const ReceptionDashboard: React.FC = () => {
+  const { session } = useAuth();
+  const { language } = useLanguage();
+  const isAr = language === 'ar';
+
+  // Selected Date (defaults to today's date in Africa/Cairo)
+  const [selectedDate, setSelectedDate] = useState<string>(() => {
+    return new Date().toISOString().split('T')[0];
+  });
+
+  // Selected Branch
+  const branches: Branch[] = useMemo(() => getStoredBranches(), []);
+  const [selectedBranchId, setSelectedBranchId] = useState<string>(() => {
+    if (session?.profile && 'branch_id' in session.profile && session.profile.branch_id) {
+      return (session.profile as any).branch_id;
+    }
+    return branches[0]?.id || '11111111-1111-1111-1111-111111111111';
+  });
+
+  // Modals state
+  const [showBookingModal, setShowBookingModal] = useState(false);
+  const [showWalkInModal, setShowWalkInModal] = useState(false);
+  const [showLookupModal, setShowLookupModal] = useState(false);
+  const [showCustomServiceModal, setShowCustomServiceModal] = useState(false);
+  const [selectedPatientFile, setSelectedPatientFile] = useState<Patient | null>(null);
+
+  // Search & Filter state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+
+  // Trigger re-fetch
+  const [refreshKey, setRefreshKey] = useState(0);
+  const refreshData = () => setRefreshKey((k) => k + 1);
+
+  // Load Data
+  const appointments: Appointment[] = useMemo(
+    () => getStoredAppointments(),
+    [refreshKey]
+  );
+  const waitingList: WaitingListEntry[] = useMemo(
+    () => getStoredWaitingList(),
+    [refreshKey]
+  );
+  const patients: Patient[] = useMemo(() => getStoredPatients(), [refreshKey]);
+  const staff: StaffUser[] = useMemo(() => getStoredStaffUsers(), []);
+  const services: Service[] = useMemo(() => getStoredServices(), []);
+
+  // Filter appointments for selected branch and date
+  const filteredAppointments = useMemo(() => {
+    return appointments.filter((apt) => {
+      // Branch filter
+      if (selectedBranchId !== 'all' && apt.branch_id !== selectedBranchId) {
+        return false;
+      }
+      // Date filter
+      if (apt.appointment_date !== selectedDate) {
+        return false;
+      }
+      // Status filter
+      if (statusFilter !== 'all' && apt.status !== statusFilter) {
+        return false;
+      }
+      // Search query (patient name, code, mobile, doctor name)
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const pat = patients.find((p) => p.id === apt.patient_id);
+        const doc = staff.find((s) => s.id === apt.doctor_id);
+
+        const patientFullName = pat ? `${pat.first_name} ${pat.middle_name || ''} ${pat.last_name}`.trim().toLowerCase() : '';
+        const matchPat =
+          patientFullName.includes(q) ||
+          pat?.patient_code.toLowerCase().includes(q) ||
+          pat?.primary_mobile.includes(q);
+
+        const matchDoc = doc?.display_name.toLowerCase().includes(q);
+
+        if (!matchPat && !matchDoc) return false;
+      }
+
+      return true;
+    });
+  }, [appointments, selectedBranchId, selectedDate, statusFilter, searchQuery, patients, staff]);
+
+  // Filter waiting list for selected branch
+  const branchWaitingList = useMemo(() => {
+    return waitingList.filter((item) => {
+      if (selectedBranchId !== 'all' && item.branch_id !== selectedBranchId) {
+        return false;
+      }
+      return item.status === 'waiting' || item.status === 'with_doctor';
+    });
+  }, [waitingList, selectedBranchId]);
+
+  // Quick stats for selected branch and date
+  const stats = useMemo(() => {
+    const dayApts = appointments.filter(
+      (a) =>
+        (selectedBranchId === 'all' || a.branch_id === selectedBranchId) &&
+        a.appointment_date === selectedDate
+    );
+
+    return {
+      total: dayApts.length,
+      confirmed: dayApts.filter((a) => a.status === 'confirmed').length,
+      arrived: dayApts.filter((a) => a.status === 'arrived').length,
+      waiting: dayApts.filter((a) => a.status === 'waiting').length,
+      withDoctor: dayApts.filter((a) => a.status === 'with_doctor').length,
+      completed: dayApts.filter((a) => a.status === 'completed').length,
+      cancelled: dayApts.filter((a) => a.status === 'cancelled').length,
+      noShow: dayApts.filter((a) => a.status === 'no_show').length,
+    };
+  }, [appointments, selectedBranchId, selectedDate]);
+
+  // Appointment Status Updater
+  const handleStatusChange = (appointmentId: string, newStatus: any) => {
+    updateAppointmentStatus(appointmentId, newStatus);
+    refreshData();
+  };
+
+  // Waiting list status updater
+  const handleWaitingStatusChange = (entryId: string, newStatus: any) => {
+    updateWaitingListStatus(entryId, newStatus);
+    refreshData();
+  };
+
+  // Status badge styling
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'confirmed':
+        return {
+          bg: 'bg-blue-100 text-blue-800 border-blue-200',
+          label: isAr ? 'مؤكد' : 'Confirmed',
+        };
+      case 'arrived':
+        return {
+          bg: 'bg-teal-100 text-teal-800 border-teal-200',
+          label: isAr ? 'وصل للمركز' : 'Arrived',
+        };
+      case 'waiting':
+        return {
+          bg: 'bg-amber-100 text-amber-800 border-amber-200',
+          label: isAr ? 'في الانتظار' : 'Waiting',
+        };
+      case 'with_doctor':
+        return {
+          bg: 'bg-purple-100 text-purple-800 border-purple-200',
+          label: isAr ? 'مع الطبيب' : 'With Doctor',
+        };
+      case 'completed':
+        return {
+          bg: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+          label: isAr ? 'مكتمل' : 'Completed',
+        };
+      case 'cancelled':
+        return {
+          bg: 'bg-rose-100 text-rose-800 border-rose-200',
+          label: isAr ? 'ملغي' : 'Cancelled',
+        };
+      case 'no_show':
+        return {
+          bg: 'bg-slate-100 text-slate-700 border-slate-200',
+          label: isAr ? 'لم يحضر' : 'No-show',
+        };
+      case 'rescheduled':
+        return {
+          bg: 'bg-orange-100 text-orange-800 border-orange-200',
+          label: isAr ? 'مُعاد جدولته' : 'Rescheduled',
+        };
+      case 'late':
+        return {
+          bg: 'bg-red-100 text-red-800 border-red-200',
+          label: isAr ? 'متأخر' : 'Late',
+        };
+      default:
+        return { bg: 'bg-slate-100 text-slate-800 border-slate-200', label: status };
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Top Header */}
+      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="p-2 bg-teal-50 text-teal-700 rounded-xl">
+              <UserCheck className="w-6 h-6" />
+            </span>
+            <div>
+              <h1 className="text-xl font-bold text-slate-900">
+                {isAr ? 'مكتب الاستقبال وإدارة المواعيد' : 'Reception & Appointment Desk'}
+              </h1>
+              <p className="text-xs text-slate-500 mt-0.5">
+                {isAr
+                  ? 'متابعة مواعيد اليوم، تسجيل الوصول، وقائمة الانتظار في جمهورية مصر العربية'
+                  : "Today's schedule, patient arrivals, and waiting list in Egypt"}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Quick Action Buttons */}
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => setShowBookingModal(true)}
+            className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold shadow-sm flex items-center gap-1.5 transition-all"
+          >
+            <Plus className="w-4 h-4" />
+            <span>{isAr ? 'حجز موعد جديد' : 'New Booking'}</span>
+          </button>
+
+          <button
+            onClick={() => setShowWalkInModal(true)}
+            className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold shadow-sm flex items-center gap-1.5 transition-all"
+          >
+            <Clock className="w-4 h-4" />
+            <span>{isAr ? 'واك-إن / انتظار' : 'Walk-In'}</span>
+          </button>
+
+          <button
+            onClick={() => setShowLookupModal(true)}
+            className="px-3.5 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold shadow-sm flex items-center gap-1.5 transition-all"
+          >
+            <QrCode className="w-4 h-4" />
+            <span>{isAr ? 'فحص QR / وصول' : 'QR Check-in'}</span>
+          </button>
+
+          <button
+            onClick={() => setShowCustomServiceModal(true)}
+            className="px-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all"
+          >
+            <Tag className="w-3.5 h-3.5" />
+            <span>{isAr ? 'سعر مخصص' : 'Custom Price'}</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Filter & Date Bar */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm text-xs">
+        {/* Branch Selector */}
+        <div>
+          <label className="block text-slate-500 font-bold mb-1 flex items-center gap-1">
+            <Building2 className="w-3.5 h-3.5 text-teal-600" />
+            <span>{isAr ? 'الفرع المحدد' : 'Branch Scope'}</span>
+          </label>
+          <select
+            value={selectedBranchId}
+            onChange={(e) => setSelectedBranchId(e.target.value)}
+            className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-medium focus:ring-2 focus:ring-teal-500"
+          >
+            {session?.role.key === 'center_manager' && (
+              <option value="all">{isAr ? 'جميع الفروع (المركز بالكامل)' : 'All Branches'}</option>
+            )}
+            {branches.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.name} ({b.city})
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Date Selector */}
+        <div>
+          <label className="block text-slate-500 font-bold mb-1 flex items-center gap-1">
+            <Calendar className="w-3.5 h-3.5 text-teal-600" />
+            <span>{isAr ? 'تاريخ العرض' : 'Date'}</span>
+          </label>
+          <input
+            type="date"
+            value={selectedDate}
+            onChange={(e) => setSelectedDate(e.target.value)}
+            className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-medium focus:ring-2 focus:ring-teal-500"
+          />
+        </div>
+
+        {/* Search */}
+        <div>
+          <label className="block text-slate-500 font-bold mb-1 flex items-center gap-1">
+            <Search className="w-3.5 h-3.5 text-teal-600" />
+            <span>{isAr ? 'بحث سريع' : 'Search'}</span>
+          </label>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder={
+              isAr ? 'ابحث بالمريض أو الكود أو الطبيب...' : 'Patient, code, mobile, doctor...'
+            }
+            className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-medium focus:ring-2 focus:ring-teal-500"
+          />
+        </div>
+      </div>
+
+      {/* Stats Summary Bar */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
+        <div
+          onClick={() => setStatusFilter('all')}
+          className={`p-3 rounded-xl border text-center cursor-pointer transition-all ${
+            statusFilter === 'all'
+              ? 'bg-slate-900 text-white border-slate-900 shadow-sm'
+              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+          }`}
+        >
+          <div className="text-[11px] font-medium">{isAr ? 'الكل' : 'Total'}</div>
+          <div className="text-lg font-black mt-0.5">{stats.total}</div>
+        </div>
+
+        <div
+          onClick={() => setStatusFilter('confirmed')}
+          className={`p-3 rounded-xl border text-center cursor-pointer transition-all ${
+            statusFilter === 'confirmed'
+              ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+          }`}
+        >
+          <div className="text-[11px] font-medium">{isAr ? 'مؤكد' : 'Confirmed'}</div>
+          <div className="text-lg font-black mt-0.5 text-blue-600 group-hover:text-blue-700">
+            {stats.confirmed}
+          </div>
+        </div>
+
+        <div
+          onClick={() => setStatusFilter('arrived')}
+          className={`p-3 rounded-xl border text-center cursor-pointer transition-all ${
+            statusFilter === 'arrived'
+              ? 'bg-teal-600 text-white border-teal-600 shadow-sm'
+              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+          }`}
+        >
+          <div className="text-[11px] font-medium">{isAr ? 'وصل' : 'Arrived'}</div>
+          <div className="text-lg font-black mt-0.5 text-teal-600">{stats.arrived}</div>
+        </div>
+
+        <div
+          onClick={() => setStatusFilter('waiting')}
+          className={`p-3 rounded-xl border text-center cursor-pointer transition-all ${
+            statusFilter === 'waiting'
+              ? 'bg-amber-600 text-white border-amber-600 shadow-sm'
+              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+          }`}
+        >
+          <div className="text-[11px] font-medium">{isAr ? 'بالانتظار' : 'Waiting'}</div>
+          <div className="text-lg font-black mt-0.5 text-amber-600">{stats.waiting}</div>
+        </div>
+
+        <div
+          onClick={() => setStatusFilter('with_doctor')}
+          className={`p-3 rounded-xl border text-center cursor-pointer transition-all ${
+            statusFilter === 'with_doctor'
+              ? 'bg-purple-600 text-white border-purple-600 shadow-sm'
+              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+          }`}
+        >
+          <div className="text-[11px] font-medium">{isAr ? 'مع الطبيب' : 'With Doctor'}</div>
+          <div className="text-lg font-black mt-0.5 text-purple-600">{stats.withDoctor}</div>
+        </div>
+
+        <div
+          onClick={() => setStatusFilter('completed')}
+          className={`p-3 rounded-xl border text-center cursor-pointer transition-all ${
+            statusFilter === 'completed'
+              ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+          }`}
+        >
+          <div className="text-[11px] font-medium">{isAr ? 'اكتمل' : 'Completed'}</div>
+          <div className="text-lg font-black mt-0.5 text-emerald-600">{stats.completed}</div>
+        </div>
+
+        <div
+          onClick={() => setStatusFilter('cancelled')}
+          className={`p-3 rounded-xl border text-center cursor-pointer transition-all ${
+            statusFilter === 'cancelled'
+              ? 'bg-rose-600 text-white border-rose-600 shadow-sm'
+              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+          }`}
+        >
+          <div className="text-[11px] font-medium">{isAr ? 'ملغي' : 'Cancelled'}</div>
+          <div className="text-lg font-black mt-0.5 text-rose-600">{stats.cancelled}</div>
+        </div>
+
+        <div
+          onClick={() => setStatusFilter('no_show')}
+          className={`p-3 rounded-xl border text-center cursor-pointer transition-all ${
+            statusFilter === 'no_show'
+              ? 'bg-slate-700 text-white border-slate-700 shadow-sm'
+              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+          }`}
+        >
+          <div className="text-[11px] font-medium">{isAr ? 'لم يحضر' : 'No-Show'}</div>
+          <div className="text-lg font-black mt-0.5 text-slate-600">{stats.noShow}</div>
+        </div>
+      </div>
+
+      {/* Main Grid: Waiting List (Side) + Appointments (Main) */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Appointments Table (2 Cols) */}
+        <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
+          <div className="p-4 border-b border-slate-200 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-teal-600" />
+              <h2 className="text-sm font-bold text-slate-900">
+                {isAr ? 'مواعيد اليوم المجدولة' : "Today's Appointments"} ({filteredAppointments.length})
+              </h2>
+            </div>
+
+            {statusFilter !== 'all' && (
+              <button
+                onClick={() => setStatusFilter('all')}
+                className="text-xs text-teal-600 hover:underline"
+              >
+                {isAr ? 'إعادة ضبط التصفية' : 'Reset Filter'}
+              </button>
+            )}
+          </div>
+
+          {filteredAppointments.length === 0 ? (
+            <div className="p-12 text-center text-slate-500 text-xs">
+              <Calendar className="w-10 h-10 mx-auto text-slate-300 mb-2" />
+              <p>{isAr ? 'لا توجد مواعيد مسجلة تطابق التصفية الحالية' : 'No appointments matching filter'}</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-start">
+                <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
+                  <tr>
+                    <th className="px-3.5 py-3 text-start">{isAr ? 'الوقت' : 'Time'}</th>
+                    <th className="px-3.5 py-3 text-start">{isAr ? 'المريض' : 'Patient'}</th>
+                    <th className="px-3.5 py-3 text-start">{isAr ? 'الطبيب والخدمة' : 'Doctor & Service'}</th>
+                    <th className="px-3.5 py-3 text-start">{isAr ? 'الحالة' : 'Status'}</th>
+                    <th className="px-3.5 py-3 text-center">{isAr ? 'إجراءات سريعة' : 'Actions'}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredAppointments.map((apt) => {
+                    const patient = patients.find((p) => p.id === apt.patient_id);
+                    const doctor = staff.find((s) => s.id === apt.doctor_id);
+                    const service = services.find((s) => s.id === apt.service_id);
+                    const statusBadge = getStatusBadge(apt.status);
+
+                    return (
+                      <tr key={apt.id} className="hover:bg-slate-50/80 transition-colors">
+                        {/* Time */}
+                        <td className="px-3.5 py-3 whitespace-nowrap">
+                          <div className="font-mono font-bold text-slate-900">
+                            {apt.start_time} - {apt.end_time}
+                          </div>
+                        </td>
+
+                        {/* Patient */}
+                        <td className="px-3.5 py-3">
+                          <div className="font-bold text-slate-900">
+                            {patient ? `${patient.first_name} ${patient.last_name}` : '—'}
+                          </div>
+                          <div className="flex items-center gap-1.5 text-[11px] text-slate-500 font-mono mt-0.5">
+                            <span className="text-teal-700 font-bold">{patient?.patient_code}</span>
+                            <span>•</span>
+                            <span>{patient?.primary_mobile}</span>
+                          </div>
+                        </td>
+
+                        {/* Doctor & Service */}
+                        <td className="px-3.5 py-3">
+                          <div className="font-semibold text-slate-800 flex items-center gap-1">
+                            <Stethoscope className="w-3 h-3 text-teal-600" />
+                            <span>{doctor?.display_name}</span>
+                          </div>
+                          <div className="text-[11px] text-slate-500 mt-0.5">
+                            {service ? (isAr ? service.name_ar : service.name_en) : '—'}
+                          </div>
+                        </td>
+
+                        {/* Status */}
+                        <td className="px-3.5 py-3 whitespace-nowrap">
+                          <span
+                            className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-bold border ${statusBadge.bg}`}
+                          >
+                            {statusBadge.label}
+                          </span>
+                        </td>
+
+                        {/* Actions */}
+                        <td className="px-3.5 py-3 text-center whitespace-nowrap">
+                          <div className="flex items-center justify-center gap-1.5">
+                            {/* Change status selector */}
+                            <select
+                              value={apt.status}
+                              onChange={(e) => handleStatusChange(apt.id, e.target.value)}
+                              className="px-2 py-1 text-[11px] bg-white border border-slate-300 rounded-lg font-medium"
+                            >
+                              <option value="confirmed">{isAr ? 'مؤكد' : 'Confirmed'}</option>
+                              <option value="arrived">{isAr ? 'وصل' : 'Arrived'}</option>
+                              <option value="waiting">{isAr ? 'في الانتظار' : 'Waiting'}</option>
+                              <option value="with_doctor">{isAr ? 'مع الطبيب' : 'With Doctor'}</option>
+                              <option value="completed">{isAr ? 'اكتمل' : 'Completed'}</option>
+                              <option value="cancelled">{isAr ? 'إلغاء' : 'Cancelled'}</option>
+                              <option value="no_show">{isAr ? 'لم يحضر' : 'No-Show'}</option>
+                              <option value="late">{isAr ? 'متأخر' : 'Late'}</option>
+                            </select>
+
+                            {/* View Patient File */}
+                            {patient && (
+                              <button
+                                type="button"
+                                onClick={() => setSelectedPatientFile(patient)}
+                                title={isAr ? 'فتح ملف المريض' : 'View Patient File'}
+                                className="p-1.5 text-slate-500 hover:text-teal-700 hover:bg-slate-100 rounded-lg"
+                              >
+                                <FileText className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* Live Waiting List Section (1 Col) */}
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 flex flex-col h-full">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+            <div className="flex items-center gap-2">
+              <Clock className="w-4 h-4 text-amber-600" />
+              <h2 className="text-sm font-bold text-slate-900">
+                {isAr ? 'صالة الانتظار المباشرة' : 'Live Waiting Room'}
+              </h2>
+            </div>
+            <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[11px] font-bold">
+              {branchWaitingList.length} {isAr ? 'في الانتظار' : 'waiting'}
+            </span>
+          </div>
+
+          <div className="flex-1 overflow-y-auto space-y-3 pt-3">
+            {branchWaitingList.length === 0 ? (
+              <div className="p-8 text-center text-slate-400 text-xs">
+                <Clock className="w-8 h-8 mx-auto text-slate-300 mb-2" />
+                <p>{isAr ? 'لا يوجد مرضى في صالة الانتظار حالياً' : 'No patients currently waiting'}</p>
+              </div>
+            ) : (
+              branchWaitingList.map((entry) => {
+                const patient = patients.find((p) => p.id === entry.patient_id);
+                const doctor = staff.find((s) => s.id === entry.preferred_doctor_id);
+
+                return (
+                  <div
+                    key={entry.id}
+                    className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2 text-xs"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-0.5 rounded font-mono font-bold bg-amber-200 text-amber-900 text-[11px]">
+                          {entry.ticket_number}
+                        </span>
+                        <span className="font-bold text-slate-900">
+                          {patient ? `${patient.first_name} ${patient.last_name}` : '—'}
+                        </span>
+                      </div>
+
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          entry.priority === 'urgent'
+                            ? 'bg-red-100 text-red-800'
+                            : entry.priority === 'vip'
+                            ? 'bg-purple-100 text-purple-800'
+                            : 'bg-slate-200 text-slate-700'
+                        }`}
+                      >
+                        {entry.priority === 'urgent'
+                          ? isAr
+                            ? 'عاجل'
+                            : 'Urgent'
+                          : entry.priority === 'vip'
+                          ? 'VIP'
+                          : isAr
+                          ? 'عادي'
+                          : 'Normal'}
+                      </span>
+                    </div>
+
+                    <div className="text-[11px] text-slate-600 flex items-center justify-between">
+                      <span>
+                        {isAr ? 'وقت الوصول:' : 'Check-in:'}{' '}
+                        {new Date(entry.check_in_time).toLocaleTimeString('ar-EG', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </span>
+                      {doctor && (
+                        <span className="text-teal-700 font-medium">{doctor.display_name}</span>
+                      )}
+                    </div>
+
+                    {entry.chief_complaint && (
+                      <p className="text-[11px] text-slate-500 italic bg-white p-1.5 rounded border border-slate-200">
+                        "{entry.chief_complaint}"
+                      </p>
+                    )}
+
+                    {/* Waiting list actions */}
+                    <div className="flex items-center gap-2 pt-1">
+                      {entry.status === 'waiting' ? (
+                        <button
+                          type="button"
+                          onClick={() => handleWaitingStatusChange(entry.id, 'with_doctor')}
+                          className="flex-1 py-1 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-[11px] font-bold flex items-center justify-center gap-1 shadow-sm"
+                        >
+                          <Stethoscope className="w-3 h-3" />
+                          <span>{isAr ? 'دخول للطبيب' : 'Enter Doctor'}</span>
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleWaitingStatusChange(entry.id, 'completed')}
+                          className="flex-1 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold flex items-center justify-center gap-1 shadow-sm"
+                        >
+                          <CheckCircle className="w-3 h-3" />
+                          <span>{isAr ? 'اكتملت الزيارة' : 'Done'}</span>
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => handleWaitingStatusChange(entry.id, 'cancelled')}
+                        title={isAr ? 'إلغاء التذكرة' : 'Cancel Ticket'}
+                        className="p-1 text-slate-400 hover:text-red-600 rounded"
+                      >
+                        <XCircle className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Patient File Modal */}
+      {selectedPatientFile && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-xl my-8 overflow-hidden">
+            <div className="bg-gradient-to-r from-teal-700 to-slate-800 text-white p-5 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center">
+                  <FileText className="w-5 h-5 text-teal-200" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold">
+                    {isAr ? selectedPatientFile.full_name_ar : selectedPatientFile.full_name_en}
+                  </h2>
+                  <p className="text-xs text-teal-200 font-mono">
+                    {selectedPatientFile.patient_code} • {selectedPatientFile.mobile_primary}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedPatientFile(null)}
+                className="text-white/80 hover:text-white p-1 rounded-lg"
+              >
+                <XCircle className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 text-xs text-slate-700">
+              <div className="grid grid-cols-2 gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                <div>
+                  <span className="text-slate-500">{isAr ? 'تاريخ الميلاد:' : 'DOB:'}</span>
+                  <div className="font-bold text-slate-900 mt-0.5">
+                    {selectedPatientFile.date_of_birth}
+                  </div>
+                </div>
+                <div>
+                  <span className="text-slate-500">{isAr ? 'النوع:' : 'Gender:'}</span>
+                  <div className="font-bold text-slate-900 mt-0.5">
+                    {selectedPatientFile.gender === 'male'
+                      ? isAr
+                        ? 'ذكر'
+                        : 'Male'
+                      : isAr
+                      ? 'أنثى'
+                      : 'Female'}
+                  </div>
+                </div>
+                <div>
+                  <span className="text-slate-500">
+                    {isAr ? 'الرقم القومي / جواز السفر:' : 'National ID:'}
+                  </span>
+                  <div className="font-mono font-bold text-slate-900 mt-0.5">
+                    {selectedPatientFile.national_id || (isAr ? 'غير مسجل' : 'Not recorded')}
+                  </div>
+                </div>
+                <div>
+                  <span className="text-slate-500">{isAr ? 'رمز QR الفريد:' : 'QR Token:'}</span>
+                  <div className="font-mono text-teal-700 text-[11px] truncate mt-0.5">
+                    {selectedPatientFile.qr_token || '—'}
+                  </div>
+                </div>
+              </div>
+
+              {selectedPatientFile.medical_notes && (
+                <div>
+                  <h4 className="font-bold text-slate-800 mb-1">
+                    {isAr ? 'التاريخ المرضي والملاحظات الطبية:' : 'Medical Notes:'}
+                  </h4>
+                  <p className="p-3 bg-red-50 text-red-800 border border-red-200 rounded-xl">
+                    {selectedPatientFile.medical_notes}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setSelectedPatientFile(null)}
+                className="px-4 py-2 bg-white border border-slate-300 rounded-xl text-slate-700 font-semibold"
+              >
+                {isAr ? 'إغلاق' : 'Close'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Sub-modals */}
+      <NewBookingModal
+        isOpen={showBookingModal}
+        onClose={() => setShowBookingModal(false)}
+        onSuccess={refreshData}
+      />
+      <WalkInModal
+        isOpen={showWalkInModal}
+        onClose={() => setShowWalkInModal(false)}
+        onSuccess={refreshData}
+      />
+      <PatientLookupModal
+        isOpen={showLookupModal}
+        onClose={() => setShowLookupModal(false)}
+        onCheckinSuccess={refreshData}
+      />
+      <CustomServiceModal
+        isOpen={showCustomServiceModal}
+        onClose={() => setShowCustomServiceModal(false)}
+        onSuccess={refreshData}
+      />
+    </div>
+  );
+};
