@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="dentGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0d9488" />
+      <stop offset="100%" stop-color="#0f766e" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="128" fill="#f8fafc" />
+  <rect x="16" y="16" width="480" height="480" rx="112" fill="url(#dentGrad)" />
+  <!-- Tooth shape -->
+  <path d="M256 100 C 180 100, 140 140, 140 210 C 140 260, 155 300, 180 370 C 195 410, 210 420, 230 400 C 245 385, 250 320, 256 320 C 262 320, 267 385, 282 400 C 302 420, 317 410, 332 370 C 357 300, 372 260, 372 210 C 372 140, 332 100, 256 100 Z" fill="#ffffff" />
+  <!-- Medical cross / sparkle accent -->
+  <path d="M256 150 L256 220 M221 185 L291 185" stroke="#0d9488" stroke-width="12" stroke-linecap="round" />
+</svg>

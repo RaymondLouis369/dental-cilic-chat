@@ -1,0 +1,6 @@
+{
+  "name": "Dental Clinic & Dental Center Management Platform — Egypt",
+  "description": "Multi-tenant SaaS management platform for dental clinics and dental centers in Egypt, with role-based internal access, branch isolation, and Egyptian localization.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
