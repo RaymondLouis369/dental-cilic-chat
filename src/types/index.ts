@@ -132,3 +132,6 @@ export interface AuthUserSession {
   permissions: PermissionKey[];
   token: string;
 }
+
+// Phase 2: Patient Identity & Portal Types
+export * from './patient';

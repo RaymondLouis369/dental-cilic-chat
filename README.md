@@ -104,9 +104,16 @@ All 7 internal staff roles can be tested locally in development with password `d
 - **Lab Technician:** `tech.lab@dental-demo.eg` (Dental Lab)
 - **Delivery Logistics:** `delivery@dental-demo.eg` (Logistics)
 
+### Development Demo Patient Accounts (Egypt):
+Pre-seeded for testing the Patient Portal and multi-profile guardian workflows:
+
+- **Adult Guardian:** `+201000000001` • PIN: `7492` (Ahmed Mohamed — has 2 children: Laila & Omar)
+- **Individual Adult:** `+201000000004` • PIN: `5829` (Mona Hassan — independent adult file)
+
 ---
 
 ## Documentation
 
 For detailed architectural notes, RLS evaluation logic, security hardening, and acceptance test outcomes, refer to:
 - [`IMPLEMENTATION_NOTES_PHASE_01.md`](./IMPLEMENTATION_NOTES_PHASE_01.md)
+- [`IMPLEMENTATION_NOTES_PHASE_02.md`](./IMPLEMENTATION_NOTES_PHASE_02.md)

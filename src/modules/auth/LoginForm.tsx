@@ -1,11 +1,15 @@
 import React, { useState } from 'react';
-import { Shield, KeyRound, Building2, CheckCircle2, AlertCircle, Sparkles } from 'lucide-react';
+import { Shield, KeyRound, Building2, CheckCircle2, AlertCircle, Sparkles, ArrowRightLeft } from 'lucide-react';
 import { useAuth } from './AuthContext';
 import { useLanguage } from '../i18n/LanguageContext';
 import { DEMO_STAFF_CREDENTIALS } from '../../lib/storage';
 import { RoleKey } from '../../types';
 
-export const LoginForm: React.FC = () => {
+interface LoginFormProps {
+  onSwitchToPatient?: () => void;
+}
+
+export const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToPatient }) => {
   const { login, switchDemoRole } = useAuth();
   const { t, language, toggleLanguage } = useLanguage();
 
@@ -180,6 +184,21 @@ export const LoginForm: React.FC = () => {
                   );
                 })}
               </div>
+            </div>
+          )}
+
+          {/* Dedicated Switcher to Patient Portal */}
+          {onSwitchToPatient && (
+            <div className="mt-6 pt-4 border-t border-slate-200 text-center">
+              <button
+                type="button"
+                onClick={onSwitchToPatient}
+                id="btn-switch-to-patient-portal-from-staff"
+                className="inline-flex items-center gap-2 text-xs font-semibold text-teal-700 hover:text-teal-800 bg-teal-50 hover:bg-teal-100/80 px-3.5 py-2 rounded-xl border border-teal-200 transition-colors"
+              >
+                <ArrowRightLeft className="w-3.5 h-3.5" />
+                <span>{t.patientAuth.switchToPatient}</span>
+              </button>
             </div>
           )}
         </div>

@@ -6,6 +6,7 @@
 import React, { useState } from 'react';
 import { LanguageProvider, useLanguage } from './modules/i18n/LanguageContext';
 import { AuthProvider, useAuth } from './modules/auth/AuthContext';
+import { PatientAuthProvider, usePatientAuth } from './modules/patient-portal/PatientAuthContext';
 import { ProtectedRoute } from './modules/auth/ProtectedRoute';
 import { Header } from './modules/navigation/Header';
 import { Sidebar, NavTab } from './modules/navigation/Sidebar';
@@ -19,7 +20,14 @@ import { WorkspacePlaceholder } from './components/WorkspacePlaceholder';
 import { AcceptanceTestRunner } from './components/AcceptanceTestRunner';
 import { OfflineIndicator } from './modules/pwa/OfflineIndicator';
 
-const MainLayout: React.FC = () => {
+import { PatientPortalShell } from './modules/patient-portal/PatientPortalShell';
+import { PatientLogin } from './modules/patient-portal/PatientLogin';
+
+interface MainLayoutProps {
+  onSwitchToPatient: () => void;
+}
+
+const MainLayout: React.FC<MainLayoutProps> = ({ onSwitchToPatient }) => {
   const [currentTab, setCurrentTab] = useState<NavTab>('dashboard');
   const { session } = useAuth();
 
@@ -58,7 +66,7 @@ const MainLayout: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col font-sans antialiased text-slate-900">
-      <Header />
+      <Header onSwitchToPatient={onSwitchToPatient} />
       <div className="flex-1 max-w-7xl w-full mx-auto flex">
         <Sidebar currentTab={currentTab} onSelectTab={setCurrentTab} />
         <main className="flex-1 p-6 md:p-8 overflow-y-auto max-w-5xl">
@@ -70,13 +78,50 @@ const MainLayout: React.FC = () => {
   );
 };
 
+const PatientPortalEntry: React.FC<{ onSwitchToStaff: () => void }> = ({ onSwitchToStaff }) => {
+  const { session, isLoading } = usePatientAuth();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-900 text-teal-400">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-3 border-teal-500 border-t-transparent rounded-full animate-spin" />
+          <span className="text-xs font-medium text-slate-400">Loading Patient Portal...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!session) {
+    return <PatientLogin onSwitchToStaff={onSwitchToStaff} />;
+  }
+
+  return <PatientPortalShell onSwitchToStaff={onSwitchToStaff} />;
+};
+
 export default function App() {
+  const [portalMode, setPortalMode] = useState<'staff' | 'patient'>(() => {
+    return (localStorage.getItem('dental_portal_mode') as 'staff' | 'patient') || 'patient';
+  });
+
+  const handleSwitchPortal = (mode: 'staff' | 'patient') => {
+    localStorage.setItem('dental_portal_mode', mode);
+    setPortalMode(mode);
+  };
+
   return (
     <LanguageProvider>
       <AuthProvider>
-        <ProtectedRoute>
-          <MainLayout />
-        </ProtectedRoute>
+        <PatientAuthProvider>
+          {portalMode === 'patient' ? (
+            <PatientPortalEntry onSwitchToStaff={() => handleSwitchPortal('staff')} />
+          ) : (
+            <ProtectedRoute onSwitchToPatient={() => handleSwitchPortal('patient')}>
+              <MainLayout onSwitchToPatient={() => handleSwitchPortal('patient')} />
+            </ProtectedRoute>
+          )}
+          <OfflineIndicator />
+        </PatientAuthProvider>
       </AuthProvider>
     </LanguageProvider>
   );

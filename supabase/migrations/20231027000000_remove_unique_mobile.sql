@@ -1,0 +1,1 @@
+ALTER TABLE patients DROP CONSTRAINT IF EXISTS patients_organization_id_mobile_number_key;

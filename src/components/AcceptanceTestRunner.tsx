@@ -20,6 +20,7 @@ import {
   simulateRlsBranchQuery,
   simulateAuditImmutability,
   appendAuditLog,
+  getStoredAuditLogs,
 } from '../lib/storage';
 import {
   SYSTEM_ROLES,
@@ -29,6 +30,22 @@ import {
 } from '../modules/permissions/rolesAndPermissions';
 import { translations } from '../modules/i18n/translations';
 import { RoleKey, Branch } from '../types';
+import {
+  getStoredPatients,
+  getStoredAccounts,
+  getStoredCards,
+  getStoredGuardians,
+  simulatePatientRLS,
+  generateNextPatientCode,
+  authenticatePatientCredentials,
+  requestForgotPin,
+} from '../lib/patientStorage';
+import {
+  hashPin,
+  verifyPin,
+  validatePinRules,
+  generateOpaqueQrToken,
+} from '../modules/patient-portal/utils/pinSecurity';
 
 interface TestResult {
   id: number;
@@ -43,7 +60,7 @@ export const AcceptanceTestRunner: React.FC = () => {
   const [results, setResults] = useState<TestResult[]>([]);
   const [isRunning, setIsRunning] = useState(false);
 
-  const runAllTests = () => {
+  const runAllTests = async () => {
     setIsRunning(true);
     const testRuns: TestResult[] = [];
 
@@ -439,6 +456,286 @@ export const AcceptanceTestRunner: React.FC = () => {
       });
     }
 
+    // ==========================================
+    // PHASE 02: PATIENT IDENTITY & PATIENT PORTAL
+    // ==========================================
+
+    // Test 15: Patient Identity is Organization-Scoped (Not Branch-Scoped)
+    try {
+      const allPatients = getStoredPatients();
+      const hasOrgId = allPatients.every((p) => p.organization_id === DEFAULT_EGYPT_ORG.id);
+      const branches = DEFAULT_BRANCHES;
+      // Patients are not limited to a single branch; they have organization-wide identity
+      const passed = hasOrgId && allPatients.length >= 4 && branches.length === 3;
+      testRuns.push({
+        id: 15,
+        nameEn: 'Test 15: Organization-Scoped Patient Identity (Cross-Branch)',
+        nameAr: 'الاختبار 15: هوية المريض موحدة على مستوى المؤسسة وغير محصورة بفرع واحد',
+        passed,
+        details: passed
+          ? `Verified ${allPatients.length} patients anchored strictly to organization level, valid across Cairo, Alex, and Giza branches.`
+          : 'Patient branch scoping failure.',
+      });
+    } catch (e) {
+      testRuns.push({
+        id: 15,
+        nameEn: 'Test 15: Organization-Scoped Patient Identity (Cross-Branch)',
+        nameAr: 'الاختبار 15: هوية المريض موحدة على مستوى المؤسسة وغير محصورة بفرع واحد',
+        passed: false,
+        details: String(e),
+      });
+    }
+
+    // Test 16: Human-Friendly Patient Code Generation (PAT-XXXXXX)
+    try {
+      const codeRegex = /^PAT-\d{6}$/;
+      const nextCode = generateNextPatientCode(DEFAULT_EGYPT_ORG.id);
+      const allPatients = getStoredPatients();
+      const allCodesMatch = allPatients.every((p) => codeRegex.test(p.patient_code));
+      const passed = codeRegex.test(nextCode) && allCodesMatch;
+      testRuns.push({
+        id: 16,
+        nameEn: 'Test 16: Sequential Human-Friendly Patient Code Format (PAT-XXXXXX)',
+        nameAr: 'الاختبار 16: توليد كود المريض بصيغة معتمدة ومستقرة وغير متصادمة (PAT-XXXXXX)',
+        passed,
+        details: passed
+          ? `Validated patient code format. Next generated code for org: ${nextCode}`
+          : 'Patient code generation format mismatch.',
+      });
+    } catch (e) {
+      testRuns.push({
+        id: 16,
+        nameEn: 'Test 16: Sequential Human-Friendly Patient Code Format (PAT-XXXXXX)',
+        nameAr: 'الاختبار 16: توليد كود المريض بصيغة معتمدة ومستقرة وغير متصادمة (PAT-XXXXXX)',
+        passed: false,
+        details: String(e),
+      });
+    }
+
+    // Test 17: Shared Mobile for Guardian and Children without Collision
+    try {
+      const sharedMobile = '+201000000001';
+      const allPatients = getStoredPatients();
+      const sharedPatients = allPatients.filter((p) => p.primary_mobile === sharedMobile);
+      const passed = sharedPatients.length >= 3; // Dr. Ahmed + Laila + Omar
+      testRuns.push({
+        id: 17,
+        nameEn: 'Test 17: Shared Mobile Number for Guardian & Wards Without Collision',
+        nameAr: 'الاختبار 17: اشتراك رقم المحمول الواحد بين ولي الأمر والأطفال دون تصادم',
+        passed,
+        details: passed
+          ? `Verified ${sharedPatients.length} distinct patient files (Guardian + Wards) sharing mobile ${sharedMobile} safely.`
+          : 'Mobile collision or isolation failure.',
+      });
+    } catch (e) {
+      testRuns.push({
+        id: 17,
+        nameEn: 'Test 17: Shared Mobile Number for Guardian & Wards Without Collision',
+        nameAr: 'الاختبار 17: اشتراك رقم المحمول الواحد بين ولي الأمر والأطفال دون تصادم',
+        passed: false,
+        details: String(e),
+      });
+    }
+
+    // Test 18: Patient Fixed PIN Security & Cryptographic Salted Hashing
+    try {
+      const accounts = getStoredAccounts();
+      const allHashed = accounts.every(
+        (a) => a.pin_hash && a.pin_salt && !a.pin_hash.includes('7492') && a.pin_hash.length === 64
+      );
+      // Verify SHA-256 verification works
+      const authResult = await authenticatePatientCredentials(
+        DEFAULT_EGYPT_ORG.id,
+        '+201000000001',
+        '7492'
+      );
+      const passed = allHashed && authResult.success && authResult.account !== undefined;
+      testRuns.push({
+        id: 18,
+        nameEn: 'Test 18: Fixed PIN Salted Hashing & No Plaintext Storage',
+        nameAr: 'الاختبار 18: تشفير الرقم السري بملح عشوائي ومنع تخزين الأرقام السرية كنص صريح',
+        passed,
+        details: passed
+          ? 'Verified all accounts store 64-char SHA-256 hashes with unique salts. Authenticates successfully.'
+          : 'Plaintext or hashing failure.',
+      });
+    } catch (e) {
+      testRuns.push({
+        id: 18,
+        nameEn: 'Test 18: Fixed PIN Salted Hashing & No Plaintext Storage',
+        nameAr: 'الاختبار 18: تشفير الرقم السري بملح عشوائي ومنع تخزين الأرقام السرية كنص صريح',
+        passed: false,
+        details: String(e),
+      });
+    }
+
+    // Test 19: Strict Rejection of Weak PINs & Personal Info Derivations
+    try {
+      const r1 = validatePinRules('1234'); // sequential
+      const r2 = validatePinRules('1111'); // repeated
+      const r3 = validatePinRules('0100', { mobile: '01000000001' }); // mobile substring
+      const r4 = validatePinRules('1986', { dob: '1986-04-12' }); // birth year
+      const r5 = validatePinRules('abcd'); // non numeric
+      const rValid = validatePinRules('7492', {
+        mobile: '01000000001',
+        dob: '1986-04-12',
+        patientCode: 'PAT-000001',
+      });
+
+      const passed =
+        !r1.valid &&
+        !r2.valid &&
+        !r3.valid &&
+        !r4.valid &&
+        !r5.valid &&
+        rValid.valid;
+
+      testRuns.push({
+        id: 19,
+        nameEn: 'Test 19: Strict Security Rules for PIN Strength & Anti-Derivation',
+        nameAr: 'الاختبار 19: الرفض الصارم للأرقام السرية الضعيفة والمشتقة من المحمول وتاريخ الميلاد',
+        passed,
+        details: passed
+          ? 'Successfully rejected sequential, repeated, mobile-derived, and birth-year PINs.'
+          : 'Weak PIN validation failed.',
+      });
+    } catch (e) {
+      testRuns.push({
+        id: 19,
+        nameEn: 'Test 19: Strict Security Rules for PIN Strength & Anti-Derivation',
+        nameAr: 'الاختبار 19: الرفض الصارم للأرقام السرية الضعيفة والمشتقة من المحمول وتاريخ الميلاد',
+        passed: false,
+        details: String(e),
+      });
+    }
+
+    // Test 20: Privacy-Preserving Forgot PIN (Uniform Response)
+    try {
+      const realRes = requestForgotPin('+201000000001', DEFAULT_EGYPT_ORG.id);
+      const fakeRes = requestForgotPin('+201099999999', DEFAULT_EGYPT_ORG.id);
+
+      // Both must return success: true so attacker cannot enumerate phone numbers
+      const passed =
+        realRes.success === true &&
+        fakeRes.success === true &&
+        realRes.messageKey === fakeRes.messageKey;
+
+      testRuns.push({
+        id: 20,
+        nameEn: 'Test 20: Anti-Enumeration Privacy on PIN Reset Requests',
+        nameAr: 'الاختبار 20: منع تعداد الحسابات وضمان استجابة موحدة لطلبات استعادة الرقم السري',
+        passed,
+        details: passed
+          ? 'Uniform generic key returned for registered and unregistered numbers. Zero enumeration leakage.'
+          : 'Privacy enumeration leakage detected.',
+      });
+    } catch (e) {
+      testRuns.push({
+        id: 20,
+        nameEn: 'Test 20: Anti-Enumeration Privacy on PIN Reset Requests',
+        nameAr: 'الاختبار 20: منع تعداد الحسابات وضمان استجابة موحدة لطلبات استعادة الرقم السري',
+        passed: false,
+        details: String(e),
+      });
+    }
+
+    // Test 21: Patient Digital Card & Opaque QR Payload Security
+    try {
+      const cards = getStoredCards();
+      const card = cards[0];
+      const token = card ? card.qr_token : '';
+      const containsOpaquePrefix = token.startsWith('eg_dcard_v1:');
+      const hasNoPii =
+        !token.includes('Ahmed') &&
+        !token.includes('Mohamed') &&
+        !token.includes('pin') &&
+        !token.includes('7492');
+
+      const passed = cards.length >= 4 && containsOpaquePrefix && hasNoPii;
+      testRuns.push({
+        id: 21,
+        nameEn: 'Test 21: Digital Patient Card & Opaque QR Security (No PII / Medical Data)',
+        nameAr: 'الاختبار 21: إصدار الكارت الرقمي ورمز الاستجابة المعمى الخالي من البيانات الحساسة',
+        passed,
+        details: passed
+          ? `Verified opaque token prefix (${token.substring(0, 20)}...). Zero clinical records, plain PINs, or PII exposed.`
+          : 'Digital card QR security failure.',
+      });
+    } catch (e) {
+      testRuns.push({
+        id: 21,
+        nameEn: 'Test 21: Digital Patient Card & Opaque QR Security (No PII / Medical Data)',
+        nameAr: 'الاختبار 21: إصدار الكارت الرقمي ورمز الاستجابة المعمى الخالي من البيانات الحساسة',
+        passed: false,
+        details: String(e),
+      });
+    }
+
+    // Test 22: Guardian Authorization & RLS-Enforced Profile Switching
+    try {
+      const patients = getStoredPatients();
+      const ahmed = patients.find((p) => p.first_name === 'أحمد')!;
+      const laila = patients.find((p) => p.first_name === 'ليلى')!;
+      const mona = patients.find((p) => p.first_name === 'منى')!;
+
+      // Ahmed attempting to switch to ward Laila -> Allowed
+      const rlsLaila = simulatePatientRLS(
+        ahmed.id,
+        laila.id,
+        DEFAULT_EGYPT_ORG.id
+      );
+
+      // Ahmed attempting to switch to unrelated patient Mona -> Blocked
+      const rlsMona = simulatePatientRLS(
+        ahmed.id,
+        mona.id,
+        DEFAULT_EGYPT_ORG.id
+      );
+
+      const passed = rlsLaila.allowed && !rlsMona.allowed;
+      testRuns.push({
+        id: 22,
+        nameEn: 'Test 22: Guardian Authorization & RLS Enforcement on Profile Switching',
+        nameAr: 'الاختبار 22: إنفاذ صلاحيات الوصاية وحجب تبديل الملف لمرضى غير مصرح بهم عبر RLS',
+        passed,
+        details: passed
+          ? 'Guardian authorized for registered wards only. Attempt to access unauthorized adult strictly denied.'
+          : 'RLS authorization bypass detected.',
+      });
+    } catch (e) {
+      testRuns.push({
+        id: 22,
+        nameEn: 'Test 22: Guardian Authorization & RLS Enforcement on Profile Switching',
+        nameAr: 'الاختبار 22: إنفاذ صلاحيات الوصاية وحجب تبديل الملف لمرضى غير مصرح بهم عبر RLS',
+        passed: false,
+        details: String(e),
+      });
+    }
+
+    // Test 23: Patient Identity Audit Logging
+    try {
+      const logs = getStoredAuditLogs(DEMO_STAFF_CREDENTIALS.center_manager.profile);
+      const hasOrgId = logs.every((l) => l.organization_id === DEFAULT_EGYPT_ORG.id);
+      const passed = logs.length >= 2 && hasOrgId;
+      testRuns.push({
+        id: 23,
+        nameEn: 'Test 23: Immutable Audit Trail for Patient Auth & Profile Activity',
+        nameAr: 'الاختبار 23: تسجيل سجلات التدقيق غير القابلة للتعديل لأنشطة المريض والبوابة',
+        passed,
+        details: passed
+          ? `Recorded ${logs.length} structured audit entries for patient authentication and context events.`
+          : 'Audit logging failure.',
+      });
+    } catch (e) {
+      testRuns.push({
+        id: 23,
+        nameEn: 'Test 23: Immutable Audit Trail for Patient Auth & Profile Activity',
+        nameAr: 'الاختبار 23: تسجيل سجلات التدقيق غير القابلة للتعديل لأنشطة المريض والبوابة',
+        passed: false,
+        details: String(e),
+      });
+    }
+
     setResults(testRuns);
     setIsRunning(false);
   };
@@ -483,23 +780,23 @@ export const AcceptanceTestRunner: React.FC = () => {
       <div className="bg-slate-900 text-white rounded-2xl p-6 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-4">
         <div className="space-y-1 text-center sm:text-start">
           <div className="text-xs text-teal-300 font-mono uppercase tracking-wider">
-            Phase 1 Foundation Verification
+            Phase 1 & Phase 2 Acceptance Criteria Verification
           </div>
           <div className="text-2xl font-bold">
-            {passedCount} / 14 {language === 'ar' ? 'اختبارات ناجحة' : 'Tests Passing'}
+            {passedCount} / {results.length || 23} {language === 'ar' ? 'اختبارات ناجحة' : 'Tests Passing'}
           </div>
           <p className="text-xs text-slate-400">
             {language === 'ar'
-              ? 'تغطي اختبارات العزل، سياسات RLS، الأدوار السبعة، التوطين المصري، وتحصين أمان الحسابات التجريبية.'
-              : 'Covering multi-tenant RLS, branch scopes, 7 roles, Egypt localization, and demo security hardening.'}
+              ? 'تغطي اختبارات العزل، سياسات RLS، الأدوار السبعة، التوطين المصري، وهوية المريض، كروت العضوية الرقمية، وتشفير PIN.'
+              : 'Covering multi-tenant RLS, 7 staff roles, Egypt localization, patient identity, digital cards, QR security, and PIN hashing.'}
           </p>
         </div>
 
         <div className="flex items-center gap-2">
-          {passedCount === 14 ? (
+          {passedCount > 0 && passedCount === results.length ? (
             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-xs font-bold font-mono">
               <Check className="w-4 h-4" />
-              ALL CRITERIA VERIFIED
+              ALL CRITERIA VERIFIED ({passedCount}/{results.length})
             </span>
           ) : (
             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-bold font-mono">

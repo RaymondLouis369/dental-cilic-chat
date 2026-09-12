@@ -1,11 +1,15 @@
 import React from 'react';
-import { LogOut, Globe, Shield, MapPin, Building } from 'lucide-react';
+import { LogOut, Globe, Shield, MapPin, Building, ArrowRightLeft } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { useLanguage } from '../i18n/LanguageContext';
 import { PWAInstallButton } from '../pwa/PWAInstallButton';
 import { RoleBadge } from './RoleBadge';
 
-export const Header: React.FC = () => {
+interface HeaderProps {
+  onSwitchToPatient?: () => void;
+}
+
+export const Header: React.FC<HeaderProps> = ({ onSwitchToPatient }) => {
   const { session, logout, isOrgWideManager, accessibleBranches } = useAuth();
   const { t, toggleLanguage } = useLanguage();
 
@@ -54,6 +58,18 @@ export const Header: React.FC = () => {
             <Globe className="w-3.5 h-3.5 text-teal-600" />
             <span>{t.common.langSwitch}</span>
           </button>
+
+          {onSwitchToPatient && (
+            <button
+              onClick={onSwitchToPatient}
+              id="btn-header-switch-to-patient"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 text-xs font-semibold transition"
+              title={t.patientAuth.switchToPatient}
+            >
+              <ArrowRightLeft className="w-3.5 h-3.5 text-teal-600" />
+              <span className="hidden sm:inline">{t.patientAuth.switchToPatient}</span>
+            </button>
+          )}
 
           <div className="hidden md:flex flex-col items-end border-s border-slate-200 ps-3">
             <span className="text-xs font-bold text-slate-900">

@@ -4,9 +4,10 @@ import { LoginForm } from './LoginForm';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
+  onSwitchToPatient?: () => void;
 }
 
-export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
+export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, onSwitchToPatient }) => {
   const { session, isLoading } = useAuth();
 
   if (isLoading) {
@@ -21,7 +22,7 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
   }
 
   if (!session) {
-    return <LoginForm />;
+    return <LoginForm onSwitchToPatient={onSwitchToPatient} />;
   }
 
   return <>{children}</>;
