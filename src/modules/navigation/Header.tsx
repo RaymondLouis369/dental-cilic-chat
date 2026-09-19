@@ -4,6 +4,7 @@ import { useAuth } from '../auth/AuthContext';
 import { useLanguage } from '../i18n/LanguageContext';
 import { PWAInstallButton } from '../pwa/PWAInstallButton';
 import { RoleBadge } from './RoleBadge';
+import { NotificationBell } from '../../components/NotificationBell';
 
 interface HeaderProps {
   onSwitchToPatient?: () => void;
@@ -45,8 +46,10 @@ export const Header: React.FC<HeaderProps> = ({ onSwitchToPatient }) => {
           </div>
         </div>
 
-        {/* User profile, Role, PWA Install & Language switcher */}
+        {/* User profile, Role, Notification Bell, PWA Install & Language switcher */}
         <div className="flex items-center gap-3">
+          <NotificationBell />
+
           <PWAInstallButton />
 
           <button

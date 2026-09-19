@@ -144,3 +144,114 @@ export function generateSampleExcelBuffer(): Uint8Array {
 
   return XLSX.write(workbook, { type: 'array', bookType: 'xlsx' });
 }
+
+/**
+ * Generates sample Excel binary for Insurance Price List
+ */
+export function generateInsuranceExcelBuffer(): Uint8Array {
+  const sampleData = [
+    {
+      'Service Code': 'SRV-001',
+      'Service Name Arabic': 'الكشف العام واستشارة طبيب الأسنان',
+      'Service Name English': 'General Examination & Consultation',
+      'Category': 'examinations',
+      'Insurance Agreed Price': 280,
+      'Coverage Percent': 80,
+      'Patient Copay Percent': 20,
+      'Requires Pre-Approval': false,
+      'Active': true,
+    },
+    {
+      'Service Code': 'SRV-003',
+      'Service Name Arabic': 'تنظيف وتلميع الأسنان وإزالة الجير',
+      'Service Name English': 'Ultrasonic Scaling & Polishing',
+      'Category': 'preventive',
+      'Insurance Agreed Price': 550,
+      'Coverage Percent': 80,
+      'Patient Copay Percent': 20,
+      'Requires Pre-Approval': false,
+      'Active': true,
+    },
+    {
+      'Service Code': 'SRV-005',
+      'Service Name Arabic': 'علاج جذور وعصب لضرس خلفي',
+      'Service Name English': 'Molar Root Canal Treatment',
+      'Category': 'endodontics',
+      'Insurance Agreed Price': 2000,
+      'Coverage Percent': 75,
+      'Patient Copay Percent': 25,
+      'Requires Pre-Approval': true,
+      'Active': true,
+    },
+  ];
+
+  const worksheet = XLSX.utils.json_to_sheet(sampleData);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'InsuranceTariff2026');
+
+  return XLSX.write(workbook, { type: 'array', bookType: 'xlsx' });
+}
+
+/**
+ * Exports current active Cash Services to Excel for batch editing
+ */
+export function exportActiveCashPriceListBuffer(services: any[]): Uint8Array {
+  const data = (services || []).map((s) => ({
+    'Service Code': s.code,
+    'Service Name Arabic': s.name_ar,
+    'Service Name English': s.name_en,
+    'Category': s.category,
+    'Cash Price': (s as any).cash_price || 0,
+    'Active': s.active !== false,
+  }));
+
+  const worksheet = XLSX.utils.json_to_sheet(data.length > 0 ? data : [
+    {
+      'Service Code': 'SRV-001',
+      'Service Name Arabic': 'الكشف العام واستشارة طبيب الأسنان',
+      'Service Name English': 'General Examination & Consultation',
+      'Category': 'examinations',
+      'Cash Price': 320,
+      'Active': true,
+    }
+  ]);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'ActiveCashPriceList');
+
+  return XLSX.write(workbook, { type: 'array', bookType: 'xlsx' });
+}
+
+/**
+ * Exports current active Insurance Price List items to Excel for batch editing
+ */
+export function exportActiveInsurancePriceListBuffer(items: any[]): Uint8Array {
+  const data = (items || []).map((i) => ({
+    'Service Code': i.service_code || i.service?.code || '',
+    'Service Name Arabic': i.service?.name_ar || '',
+    'Service Name English': i.service?.name_en || '',
+    'Category': i.service?.category || 'general',
+    'Insurance Agreed Price': i.insurance_price || 0,
+    'Coverage Percent': i.coverage_percentage || 80,
+    'Patient Copay Percent': i.patient_copay_percentage || 20,
+    'Requires Pre-Approval': i.requires_approval || false,
+    'Active': i.active !== false,
+  }));
+
+  const worksheet = XLSX.utils.json_to_sheet(data.length > 0 ? data : [
+    {
+      'Service Code': 'SRV-001',
+      'Service Name Arabic': 'الكشف العام واستشارة طبيب الأسنان',
+      'Service Name English': 'General Examination & Consultation',
+      'Category': 'examinations',
+      'Insurance Agreed Price': 280,
+      'Coverage Percent': 80,
+      'Patient Copay Percent': 20,
+      'Requires Pre-Approval': false,
+      'Active': true,
+    }
+  ]);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'ActiveInsuranceTariff');
+
+  return XLSX.write(workbook, { type: 'array', bookType: 'xlsx' });
+}

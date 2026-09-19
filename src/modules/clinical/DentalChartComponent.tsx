@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   ToothCondition,
   ToothSurface,
@@ -10,7 +10,15 @@ import {
   saveDentalChartEntry,
   getToothHistory,
   getStoredDentalChartEntries,
+  createTreatmentPlan,
+  addServiceToTreatmentPlan,
+  getStoredTreatmentPlans,
 } from '../../lib/clinicalStorage';
+import {
+  getStoredServiceCategories,
+  getStoredServices,
+  calculateServicePriceAndInsurance,
+} from '../../lib/receptionAndBillingStorage';
 import { useAuth } from '../auth/AuthContext';
 import {
   CheckCircle2,
@@ -19,12 +27,18 @@ import {
   Info,
   X,
   Plus,
+  Stethoscope,
+  ShieldCheck,
+  AlertTriangle,
+  Layers,
 } from 'lucide-react';
 
 interface DentalChartProps {
   patientId: string;
   chartType?: ChartType;
   onEntriesChange?: () => void;
+  activeTreatmentPlanId?: string;
+  onServiceAdded?: () => void;
 }
 
 // Tooth Condition Metadata
@@ -210,18 +224,138 @@ export const DentalChartComponent: React.FC<DentalChartProps> = ({
   patientId,
   chartType: initialChartType = 'adult',
   onEntriesChange,
+  activeTreatmentPlanId,
+  onServiceAdded,
 }) => {
-  const { isRtl } = useLanguage();
+  const { isRtl, language } = useLanguage();
   const { session } = useAuth();
+  const isAr = language === 'ar';
+
   const [activeChartType, setActiveChartType] = useState<ChartType>(initialChartType);
   const [notation, setNotation] = useState<'fdi' | 'universal'>('fdi');
+  const [chartMode, setChartMode] = useState<'treatment' | 'condition'>('treatment');
+  
+  // Single tooth condition modal state
   const [selectedTooth, setSelectedTooth] = useState<string | null>(null);
-
-  // Modal State for adding/updating tooth condition
   const [conditionInput, setConditionInput] = useState<ToothCondition>('caries');
   const [selectedSurfaces, setSelectedSurfaces] = useState<ToothSurface[]>(['occlusal']);
   const [notesInput, setNotesInput] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+
+  // Multi-tooth selection & service catalog state
+  const [selectedTeeth, setSelectedTeeth] = useState<string[]>([]);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
+  const [selectedServiceId, setSelectedServiceId] = useState<string>('');
+  const [addingService, setAddingService] = useState(false);
+
+  // Categories & Services (Only Active Services are selectable)
+  const categories = useMemo(() => {
+    return getStoredServiceCategories().filter((c) => c.active !== false);
+  }, []);
+
+  const activeServices = useMemo(() => {
+    const all = getStoredServices().filter((s) => s.active !== false);
+    if (!selectedCategoryId) return all;
+    return all.filter(
+      (s) => s.category_id === selectedCategoryId || (s as any).category === selectedCategoryId
+    );
+  }, [selectedCategoryId]);
+
+  // Live Pricing Resolution calculation for selected service & teeth count
+  const livePricing = useMemo(() => {
+    if (!selectedServiceId) return null;
+    const res = calculateServicePriceAndInsurance({
+      organizationId: session?.profile?.organization_id,
+      patientId,
+      serviceId: selectedServiceId,
+    });
+    const count = Math.max(1, selectedTeeth.length);
+    const unitPrice = res.total_price;
+    const totalPrice = unitPrice * count;
+    const coveragePct = res.coverage_percentage;
+    const copayPct = res.copay_percentage;
+    const insuranceCoverageAmount = Math.round(((totalPrice * coveragePct) / 100) * 100) / 100;
+    const patientCopayAmount = Math.round((totalPrice - insuranceCoverageAmount) * 100) / 100;
+
+    return {
+      ...res,
+      unitPrice,
+      totalPrice,
+      coveragePct,
+      copayPct,
+      insuranceCoverageAmount,
+      patientCopayAmount,
+      teethCount: count,
+    };
+  }, [selectedServiceId, selectedTeeth.length, patientId, session?.profile?.organization_id]);
+
+  // Toggle tooth in multi-tooth selection mode
+  const handleToggleToothSelection = (toothNum: string) => {
+    if (selectedTeeth.includes(toothNum)) {
+      setSelectedTeeth(selectedTeeth.filter((t) => t !== toothNum));
+    } else {
+      setSelectedTeeth([...selectedTeeth, toothNum]);
+    }
+  };
+
+  const handleToothClick = (toothNum: string) => {
+    if (chartMode === 'treatment') {
+      handleToggleToothSelection(toothNum);
+    } else {
+      handleOpenToothModal(toothNum);
+    }
+  };
+
+  // Add selected service to treatment plan
+  const handleAddServiceToTreatmentPlan = () => {
+    if (!selectedServiceId) return;
+    setAddingService(true);
+
+    try {
+      let targetPlanId = activeTreatmentPlanId;
+
+      if (!targetPlanId) {
+        const existingPlans = getStoredTreatmentPlans().filter((p) => p.patient_id === patientId);
+        if (existingPlans.length > 0) {
+          targetPlanId = existingPlans[0].id;
+        } else {
+          const newPlan = createTreatmentPlan({
+            patientId,
+            doctorId: session?.profile?.id || 'prof_doc_01',
+            title: isAr ? 'خطة العلاج الرئيسية' : 'Primary Dental Treatment Plan',
+            organizationId: session?.profile?.organization_id,
+          });
+          targetPlanId = newPlan.id;
+        }
+      }
+
+      const srvMeta = activeServices.find((s) => s.id === selectedServiceId);
+      const categoryMeta = categories.find((c) => c.id === selectedCategoryId);
+
+      addServiceToTreatmentPlan({
+        organizationId: session?.profile?.organization_id,
+        treatmentPlanId: targetPlanId,
+        patientId,
+        serviceId: selectedServiceId,
+        serviceCode: srvMeta?.code,
+        serviceNameAr: srvMeta?.name_ar,
+        serviceNameEn: srvMeta?.name_en,
+        categoryId: categoryMeta?.id || srvMeta?.category_id,
+        categoryNameAr: categoryMeta?.name_ar,
+        categoryNameEn: categoryMeta?.name_en,
+        toothNumber: selectedTeeth.length > 0 ? selectedTeeth.join(', ') : undefined,
+        doctorId: session?.profile?.id || 'prof_doc_01',
+      });
+
+      setSelectedTeeth([]);
+      setSelectedServiceId('');
+
+      if (onServiceAdded) onServiceAdded();
+      if (onEntriesChange) onEntriesChange();
+    } finally {
+      setAddingService(false);
+    }
+  };
 
   // Fetch chart entries
   const allEntries = getStoredDentalChartEntries().filter((e) => e.patient_id === patientId);
@@ -288,19 +422,22 @@ export const DentalChartComponent: React.FC<DentalChartProps> = ({
     const cond = entry?.condition || 'sound';
     const cfg = CONDITION_CONFIG[cond];
     const displayNum = notation === 'fdi' ? toothNum : FDI_TO_UNIVERSAL[toothNum] || toothNum;
-    const isSelected = selectedTooth === toothNum;
+    const isSingleSelected = selectedTooth === toothNum;
+    const isMultiSelected = selectedTeeth.includes(toothNum);
 
     return (
       <button
         key={toothNum}
         type="button"
         id={`tooth-btn-${toothNum}`}
-        onClick={() => handleOpenToothModal(toothNum)}
+        onClick={() => handleToothClick(toothNum)}
         className={`relative flex flex-col items-center justify-between p-2 rounded-lg border transition-all duration-150 min-w-[54px] min-h-[72px] sm:min-w-[62px] sm:min-h-[82px] ${
-          isSelected
+          isMultiSelected
+            ? 'ring-2 ring-emerald-500 ring-offset-2 bg-emerald-100/90 border-emerald-500 scale-105 z-10 shadow-md font-bold'
+            : isSingleSelected
             ? 'ring-2 ring-blue-600 ring-offset-2 scale-105 z-10 shadow-md'
             : 'hover:shadow-md hover:scale-102'
-        } ${cfg.bg} ${cfg.border}`}
+        } ${!isMultiSelected ? cfg.bg : ''} ${!isMultiSelected ? cfg.border : ''}`}
       >
         {/* Top Notation Header */}
         <div className="flex items-center justify-between w-full px-0.5">
@@ -390,9 +527,10 @@ export const DentalChartComponent: React.FC<DentalChartProps> = ({
 
   return (
     <div className="space-y-6" id="dental-chart-container">
-      {/* Controls Bar: Chart Type (Adult/Child), Numbering System, Legend */}
+      {/* Controls Bar: Chart Type, Mode Switcher, Notation System */}
       <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-white rounded-xl border border-slate-200 shadow-xs">
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Chart Type: Adult vs Pediatric */}
           <div className="flex items-center bg-slate-100 p-1 rounded-lg">
             <button
               type="button"
@@ -420,6 +558,37 @@ export const DentalChartComponent: React.FC<DentalChartProps> = ({
             </button>
           </div>
 
+          {/* Chart Mode: Treatment Plan Service vs Tooth Condition */}
+          <div className="flex items-center bg-slate-100 p-1 rounded-lg border border-slate-200">
+            <button
+              type="button"
+              id="mode-treatment"
+              onClick={() => setChartMode('treatment')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-md transition-all ${
+                chartMode === 'treatment'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Stethoscope className="w-3.5 h-3.5" />
+              <span>{isRtl ? 'خطة العلاج وتحديد الأسنان' : 'Treatment Planning Mode'}</span>
+            </button>
+            <button
+              type="button"
+              id="mode-condition"
+              onClick={() => setChartMode('condition')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-md transition-all ${
+                chartMode === 'condition'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Layers className="w-3.5 h-3.5" />
+              <span>{isRtl ? 'تسجيل حالة السن' : 'Tooth Condition Mode'}</span>
+            </button>
+          </div>
+
+          {/* Notation System */}
           <div className="flex items-center bg-slate-100 p-1 rounded-lg">
             <button
               type="button"
@@ -452,12 +621,193 @@ export const DentalChartComponent: React.FC<DentalChartProps> = ({
         <div className="flex items-center gap-2 text-xs text-slate-500">
           <Info className="w-4 h-4 text-blue-600" />
           <span>
-            {isRtl
+            {chartMode === 'treatment'
+              ? isRtl
+                ? 'انقر على سن أو عدة أسنان لربطها بالإجراء المختار وحساب التغطية التأمينية'
+                : 'Click single or multiple teeth to link to a service & calculate coverage.'
+              : isRtl
               ? 'انقر على أي سن لتعديل حالته، تحديد الأسطح، وتسجيل الملاحظات السريرية'
               : 'Click any tooth to record condition, surfaces, and clinical notes.'}
           </span>
         </div>
       </div>
+
+      {/* Service Catalog Selection & Live Insurance Pricing Panel (When in Treatment Mode) */}
+      {chartMode === 'treatment' && (
+        <div className="p-5 bg-gradient-to-br from-slate-50 to-teal-50/40 rounded-xl border border-teal-200/80 shadow-xs space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-teal-100 pb-3">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-teal-600 text-white flex items-center justify-center font-bold">
+                <Stethoscope className="w-4 h-4" />
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-slate-900">
+                  {isRtl ? 'إضافة إجراء لخطة العلاج وتحديد الأسنان' : 'Link Service to Selected Teeth'}
+                </h4>
+                <p className="text-xs text-slate-500">
+                  {isRtl
+                    ? 'حدد الفئة والإجراء، اختر الأسنان من المخطط، وراجع تفاصيل التغطية التأمينية والتحمل'
+                    : 'Select Category, Service & Teeth to view insurance calculation'}
+                </p>
+              </div>
+            </div>
+
+            {/* Selected Teeth Pill Display */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-slate-700">
+                {isRtl ? 'الأسنان المحددة:' : 'Selected Teeth:'}
+              </span>
+              {selectedTeeth.length > 0 ? (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {selectedTeeth.map((t) => {
+                    const disp = notation === 'fdi' ? t : FDI_TO_UNIVERSAL[t] || t;
+                    return (
+                      <span
+                        key={t}
+                        className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-600 text-white text-xs font-bold shadow-2xs"
+                      >
+                        #{disp}
+                        <button
+                          type="button"
+                          onClick={() => handleToggleToothSelection(t)}
+                          className="hover:text-emerald-200 text-xs ml-0.5"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedTeeth([])}
+                    className="text-[11px] text-slate-500 hover:text-rose-600 underline font-medium"
+                  >
+                    {isRtl ? 'مسح الكل' : 'Clear all'}
+                  </button>
+                </div>
+              ) : (
+                <span className="text-xs italic text-amber-700 bg-amber-50 px-2.5 py-1 rounded-md border border-amber-200">
+                  {isRtl ? 'انقر على الأسنان من الرسم أدناه' : 'Click teeth on chart below'}
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Category & Service Selection Dropdowns */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Service Category Selection */}
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                {isRtl ? 'فئة الإجراءات (Category):' : 'Service Category:'}
+              </label>
+              <select
+                id="treatment-service-category-select"
+                value={selectedCategoryId}
+                onChange={(e) => {
+                  setSelectedCategoryId(e.target.value);
+                  setSelectedServiceId('');
+                }}
+                className="w-full text-xs p-2.5 rounded-xl border border-slate-300 bg-white font-medium focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-hidden"
+              >
+                <option value="">{isRtl ? '-- جميع الفئات --' : '-- All Categories --'}</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {isRtl ? c.name_ar : c.name_en}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Service Selection (Active Services Only) */}
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                {isRtl ? 'الإجراء السريري (Active Service):' : 'Clinical Service:'}
+              </label>
+              <select
+                id="treatment-service-select"
+                value={selectedServiceId}
+                onChange={(e) => setSelectedServiceId(e.target.value)}
+                className="w-full text-xs p-2.5 rounded-xl border border-slate-300 bg-white font-medium focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-hidden"
+              >
+                <option value="">{isRtl ? '-- اختر الإجراء --' : '-- Select Service --'}</option>
+                {activeServices.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {isRtl ? s.name_ar : s.name_en} ({s.code || 'N/A'}) - {s.price?.toLocaleString('en-US')} EGP
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Live Pricing Breakdown Card */}
+          {livePricing && (
+            <div className="p-4 bg-white rounded-xl border border-teal-200 shadow-2xs space-y-3 animate-fadeIn">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                <span className="text-xs font-bold text-slate-800">
+                  {isRtl ? 'تفاصيل السعر والتغطية التأمينية الحسبة الحالية:' : 'Live Pricing & Insurance Breakdown:'}
+                </span>
+                {livePricing.requires_approval ? (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-100 text-amber-900 border border-amber-300 rounded-lg text-xs font-bold animate-pulse">
+                    <Clock className="w-3.5 h-3.5 text-amber-600" />
+                    <span>{isRtl ? 'يتطلب موافقة تأمين مسبقة (Pre-approval Required)' : 'Pre-approval Required'}</span>
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-100 text-blue-900 border border-blue-300 rounded-lg text-xs font-bold">
+                    <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
+                    <span>{isRtl ? 'تغطية مباشرة بدون موافقة (Direct Coverage)' : 'Direct Coverage'}</span>
+                  </span>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                {/* Total Price */}
+                <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200">
+                  <span className="text-[11px] text-slate-500 block">
+                    {isRtl ? `إجمالي السعر (${livePricing.teethCount} سن):` : `Total Price (${livePricing.teethCount} teeth):`}
+                  </span>
+                  <span className="text-sm font-bold text-slate-900 font-mono">
+                    {livePricing.totalPrice.toLocaleString('en-US')} EGP
+                  </span>
+                </div>
+
+                {/* Insurance % & Amount */}
+                <div className="p-2.5 bg-teal-50 rounded-lg border border-teal-200">
+                  <span className="text-[11px] text-teal-700 block font-medium">
+                    {isRtl ? `تغطية التأمين (${livePricing.coveragePct}%):` : `Insurance Coverage (${livePricing.coveragePct}%):`}
+                  </span>
+                  <span className="text-sm font-bold text-teal-900 font-mono">
+                    {livePricing.insuranceCoverageAmount.toLocaleString('en-US')} EGP
+                  </span>
+                </div>
+
+                {/* Patient Copay % & Amount */}
+                <div className="p-2.5 bg-amber-50 rounded-lg border border-amber-200">
+                  <span className="text-[11px] text-amber-700 block font-medium">
+                    {isRtl ? `تحمل المريض (${livePricing.copayPct}%):` : `Patient Copay (${livePricing.copayPct}%):`}
+                  </span>
+                  <span className="text-sm font-bold text-amber-900 font-mono">
+                    {livePricing.patientCopayAmount.toLocaleString('en-US')} EGP
+                  </span>
+                </div>
+
+                {/* Submit Action */}
+                <div className="flex items-end">
+                  <button
+                    type="button"
+                    id="add-service-to-plan-btn"
+                    disabled={addingService}
+                    onClick={handleAddServiceToTreatmentPlan}
+                    className="w-full h-[42px] px-3 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs font-bold shadow-xs flex items-center justify-center gap-1.5 transition-all"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>{isRtl ? 'إضافة لخطة العلاج' : 'Add to Plan'}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Interactive Dental Arches Container */}
       <div className="p-6 bg-slate-900 text-white rounded-2xl shadow-md space-y-6 overflow-x-auto">

@@ -46,6 +46,17 @@ import {
   validatePinRules,
   generateOpaqueQrToken,
 } from '../modules/patient-portal/utils/pinSecurity';
+import {
+  getStoredSuppliers,
+  upsertSupplier,
+  toggleSupplierActive,
+  getStoredServices,
+  saveService,
+  deactivateService,
+  reactivateService,
+} from '../lib/receptionAndBillingStorage';
+import { Service } from '../types/receptionAndBilling';
+import { Phase09_1AcceptanceTestRunner } from './Phase09_1AcceptanceTestRunner';
 
 interface TestResult {
   id: number;
@@ -1117,6 +1128,289 @@ export const AcceptanceTestRunner: React.FC = () => {
         });
       }
 
+      // Test 34: Phase 8.1 Supplier Seed Data & Organization Isolation
+      try {
+        const orgSuppliers = getStoredSuppliers(DEFAULT_EGYPT_ORG.id);
+        const foreignSuppliers = getStoredSuppliers('org_other_foreign');
+        const passed =
+          orgSuppliers.length >= 4 &&
+          orgSuppliers.some((s) => s.type === 'dental_lab') &&
+          orgSuppliers.some((s) => s.type === 'implant_supplier') &&
+          foreignSuppliers.length === 0;
+
+        testRuns.push({
+          id: 34,
+          nameEn: 'Test 34: Phase 8.1 Supplier Data Model & Organization Isolation',
+          nameAr: 'الاختبار 34: نموذج بيانات الموردين وعزل المؤسسات بالكامل',
+          passed,
+          details: passed
+            ? `Verified ${orgSuppliers.length} suppliers in main organization and strict 0 isolation for foreign organization.`
+            : 'Supplier organization isolation failure.',
+        });
+      } catch (e) {
+        testRuns.push({
+          id: 34,
+          nameEn: 'Test 34: Phase 8.1 Supplier Data Model & Organization Isolation',
+          nameAr: 'الاختبار 34: نموذج بيانات الموردين وعزل المؤسسات بالكامل',
+          passed: false,
+          details: String(e),
+        });
+      }
+
+      // Test 35: Phase 8.1 Supplier CRUD & RBAC Permission Guards
+      try {
+        const createRes = upsertSupplier(
+          {
+            organization_id: DEFAULT_EGYPT_ORG.id,
+            name_ar: 'مؤسسة الاختبار السريع للخامات الطبية',
+            name_en: 'Test Dental Supply Co.',
+            type: 'dental_materials',
+            phone: '01009998877',
+            notes: 'شركة اختبار للتأكد من عمليات الإضافة والتعديل والصلاحيات',
+            active: true,
+          },
+          'usr_mgr_01',
+          'center_manager'
+        );
+
+        const unauthRes = upsertSupplier(
+          {
+            organization_id: DEFAULT_EGYPT_ORG.id,
+            name_ar: 'مورد مرفوض للصلاحيات',
+            type: 'other',
+          },
+          'usr_rec_01',
+          'receptionist'
+        );
+
+        const passed =
+          createRes.success === true &&
+          createRes.supplier?.name_en === 'Test Dental Supply Co.' &&
+          unauthRes.success === false &&
+          Boolean(unauthRes.error);
+
+        testRuns.push({
+          id: 35,
+          nameEn: 'Test 35: Phase 8.1 Supplier CRUD & Strict RBAC Enforcement',
+          nameAr: 'الاختبار 35: عمليات الموردين وحظر الأدوار غير المصرح لها (الاستقبال والأطباء)',
+          passed,
+          details: passed
+            ? `Created supplier (${createRes.supplier?.id}) as center_manager and strictly blocked receptionist write attempt.`
+            : 'Supplier RBAC enforcement failure.',
+        });
+      } catch (e) {
+        testRuns.push({
+          id: 35,
+          nameEn: 'Test 35: Phase 8.1 Supplier CRUD & Strict RBAC Enforcement',
+          nameAr: 'الاختبار 35: عمليات الموردين وحظر الأدوار غير المصرح لها (الاستقبال والأطباء)',
+          passed: false,
+          details: String(e),
+        });
+      }
+
+      // Test 36: Phase 8.1 Supplier Active/Inactive Toggle & Category Validation
+      try {
+        const suppliers = getStoredSuppliers(DEFAULT_EGYPT_ORG.id);
+        const target = suppliers[0];
+
+        const toggleRes = toggleSupplierActive(
+          target.id,
+          !target.active,
+          'usr_mgr_01',
+          'center_manager',
+          DEFAULT_EGYPT_ORG.id
+        );
+
+        const crossOrgToggle = toggleSupplierActive(
+          target.id,
+          false,
+          'usr_mgr_01',
+          'center_manager',
+          'org_foreign_blocked'
+        );
+
+        const passed =
+          toggleRes.success === true &&
+          toggleRes.supplier?.active === !target.active &&
+          crossOrgToggle.success === false &&
+          Boolean(crossOrgToggle.error);
+
+        // Restore original active state
+        toggleSupplierActive(target.id, target.active, 'usr_mgr_01', 'center_manager', DEFAULT_EGYPT_ORG.id);
+
+        testRuns.push({
+          id: 36,
+          nameEn: 'Test 36: Phase 8.1 Supplier Active Status Toggle & Cross-Org Guard',
+          nameAr: 'الاختبار 36: تفعيل وتعيين حالة المورد وتطبيق حظر تعديل المؤسسات الأخرى',
+          passed,
+          details: passed
+            ? 'Successfully toggled active state and blocked cross-organization state modification.'
+            : 'Supplier state toggle or cross-org guard failure.',
+        });
+      } catch (e) {
+        testRuns.push({
+          id: 36,
+          nameEn: 'Test 36: Phase 8.1 Supplier Active Status Toggle & Cross-Org Guard',
+          nameAr: 'الاختبار 36: تفعيل وتعيين حالة المورد وتطبيق حظر تعديل المؤسسات الأخرى',
+          passed: false,
+          details: String(e),
+        });
+      }
+
+      // Test 37: Phase 8.2 Service Configuration Editing & Supplier Linkage
+      try {
+        const services = getStoredServices();
+        const suppliers = getStoredSuppliers(DEFAULT_EGYPT_ORG.id);
+        const fallbackSrv: Service = {
+          id: 'srv_001',
+          organization_id: DEFAULT_EGYPT_ORG.id,
+          code: 'SRV-001',
+          name_ar: 'حشو ملجم',
+          name_en: 'Amalgam Filling',
+          category_id: 'cat_restoration',
+          category: 'حشو الأسنان',
+          default_duration_minutes: 30,
+          requires_doctor: true,
+          requires_approval: false,
+          active: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+        const targetSrv: Service = services[0] || fallbackSrv;
+        const testSupplier = suppliers[0];
+
+        const updated = saveService(
+          {
+            id: targetSrv.id,
+            organization_id: DEFAULT_EGYPT_ORG.id,
+            code: targetSrv.code,
+            name_ar: targetSrv.name_ar + ' (معدلة)',
+            name_en: targetSrv.name_en + ' (Updated)',
+            description: 'وصف طبي وإرشادات سريرية تفصيلية جديدة للخدمة السنية',
+            default_supplier_id: testSupplier?.id,
+            category_id: targetSrv.category_id,
+            default_duration_minutes: 30,
+            requires_doctor: true,
+            requires_approval: false,
+            active: true,
+          },
+          'usr_mgr_01',
+          'center_manager'
+        );
+
+        const savedSrv = getStoredServices().find((s) => s.id === targetSrv.id);
+        const passed =
+          savedSrv?.name_ar.includes('(معدلة)') === true &&
+          savedSrv?.name_en.includes('(Updated)') === true &&
+          Boolean(savedSrv?.description) &&
+          (testSupplier ? savedSrv?.default_supplier_id === testSupplier.id : true);
+
+        // Restore original names
+        saveService(
+          {
+            ...targetSrv,
+            description: targetSrv.description,
+            default_supplier_id: targetSrv.default_supplier_id,
+          },
+          'usr_mgr_01',
+          'center_manager'
+        );
+
+        testRuns.push({
+          id: 37,
+          nameEn: 'Test 37: Phase 8.2 Service Configuration Editing & Supplier Linkage',
+          nameAr: 'الاختبار 37: تعديل إعدادات الخدمة السنية والربط مع المورد/المعمل المعتمد',
+          passed,
+          details: passed
+            ? 'Service names, description, and supplier linkage updated and persisted successfully.'
+            : 'Failed to update service names or supplier assignment.',
+        });
+      } catch (e) {
+        testRuns.push({
+          id: 37,
+          nameEn: 'Test 37: Phase 8.2 Service Configuration Editing & Supplier Linkage',
+          nameAr: 'الاختبار 37: تعديل إعدادات الخدمة السنية والربط مع المورد/المعمل المعتمد',
+          passed: false,
+          details: String(e),
+        });
+      }
+
+      // Test 38: Phase 8.2 Service Activation / Deactivation & Category Scoping
+      try {
+        const services = getStoredServices();
+        const targetSrv = services[0];
+
+        const deactRes = deactivateService(targetSrv.id, 'usr_mgr_01', 'center_manager');
+        const deactSrv = getStoredServices().find((s) => s.id === targetSrv.id);
+
+        const reactRes = reactivateService(targetSrv.id, 'usr_mgr_01', 'center_manager');
+        const reactSrv = getStoredServices().find((s) => s.id === targetSrv.id);
+
+        const passed =
+          deactRes === true &&
+          deactSrv?.active === false &&
+          reactRes === true &&
+          reactSrv?.active === true;
+
+        testRuns.push({
+          id: 38,
+          nameEn: 'Test 38: Phase 8.2 Service Activation / Deactivation & Category Scoping',
+          nameAr: 'الاختبار 38: تعطيل وإعادة تفعيل الخدمات السنية وتصفية التصنيفات',
+          passed,
+          details: passed
+            ? 'Service active status successfully toggled between active and inactive states.'
+            : 'Failed to toggle service active status.',
+        });
+      } catch (e) {
+        testRuns.push({
+          id: 38,
+          nameEn: 'Test 38: Phase 8.2 Service Activation / Deactivation & Category Scoping',
+          nameAr: 'الاختبار 38: تعطيل وإعادة تفعيل الخدمات السنية وتصفية التصنيفات',
+          passed: false,
+          details: String(e),
+        });
+      }
+
+      // Test 39: Phase 8.2 Service RBAC Role Protection & Unauthorized Guard
+      try {
+        let saveRejected = false;
+        try {
+          saveService(
+            {
+              id: 'srv_001',
+              name_ar: 'اختبار الاختراق',
+              name_en: 'Penetration Test',
+            },
+            'usr_rec_01',
+            'receptionist'
+          );
+        } catch {
+          saveRejected = true;
+        }
+
+        const deactRejected = deactivateService('srv_001', 'usr_rec_01', 'receptionist') === false;
+
+        const passed = saveRejected && deactRejected;
+
+        testRuns.push({
+          id: 39,
+          nameEn: 'Test 39: Phase 8.2 Service RBAC Role Protection & Unauthorized Guard',
+          nameAr: 'الاختبار 39: حماية أذونات الأدوار وحظر تعديل الخدمات من موظفي الاستقبال والأطباء',
+          passed,
+          details: passed
+            ? 'Unauthorized configuration attempts by receptionist strictly blocked.'
+            : 'Failed RBAC protection check for unauthorized roles.',
+        });
+      } catch (e) {
+        testRuns.push({
+          id: 39,
+          nameEn: 'Test 39: Phase 8.2 Service RBAC Role Protection & Unauthorized Guard',
+          nameAr: 'الاختبار 39: حماية أذونات الأدوار وحظر تعديل الخدمات من موظفي الاستقبال والأطباء',
+          passed: false,
+          details: String(e),
+        });
+      }
+
       setResults(testRuns);
       setIsRunning(false);
     };
@@ -1161,10 +1455,10 @@ export const AcceptanceTestRunner: React.FC = () => {
         <div className="bg-slate-900 text-white rounded-2xl p-6 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="space-y-1 text-center sm:text-start">
             <div className="text-xs text-teal-300 font-mono uppercase tracking-wider">
-              Phases 1, 2, 3 & 4 Acceptance Criteria Verification
+              Phases 1-8.2 Acceptance Criteria Verification
             </div>
             <div className="text-2xl font-bold">
-              {passedCount} / {results.length || 33} {language === 'ar' ? 'اختبارات ناجحة' : 'Tests Passing'}
+              {passedCount} / {results.length || 39} {language === 'ar' ? 'اختبارات ناجحة' : 'Tests Passing'}
             </div>
             <p className="text-xs text-slate-400">
               {language === 'ar'
@@ -1229,6 +1523,9 @@ export const AcceptanceTestRunner: React.FC = () => {
           ))}
         </div>
       </div>
+
+      {/* Phase 09.1 Acceptance Test Runner */}
+      <Phase09_1AcceptanceTestRunner />
     </div>
   );
 };

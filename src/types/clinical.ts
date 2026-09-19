@@ -88,6 +88,21 @@ export type TreatmentServiceStatus =
   | 'completed'
   | 'cancelled';
 
+export type InsuranceApprovalStatus =
+  | 'direct_coverage'
+  | 'pending_approval'
+  | 'approved'
+  | 'rejected';
+
+export interface TreatmentPlanServiceOverrideAudit {
+  original_coverage_percentage: number;
+  approved_coverage_percentage: number;
+  updated_by_user_id?: string;
+  updated_by_name?: string;
+  updated_at: string;
+  notes?: string;
+}
+
 export interface TreatmentPlanService {
   id: string;
   organization_id: string;
@@ -97,12 +112,31 @@ export interface TreatmentPlanService {
   service_code?: string;
   service_name_ar?: string;
   service_name_en?: string;
+  category_id?: string;
+  category_name_ar?: string;
+  category_name_en?: string;
   tooth_number?: string;
   area?: string;
   sequence_order: number;
   doctor_id: string;
   branch_id: string;
   status: TreatmentServiceStatus;
+  
+  // Pricing & Insurance Breakdown
+  unit_price?: number;
+  total_price?: number;
+  coverage_percentage?: number; // Original contracted coverage %
+  patient_copay_percentage?: number; // Original contracted copay %
+  approved_coverage_percentage?: number; // Overridden/Approved coverage %
+  approved_copay_percentage?: number; // Overridden/Approved copay %
+  insurance_coverage_amount?: number;
+  patient_copay_amount?: number;
+  requires_approval?: boolean;
+  approval_status?: InsuranceApprovalStatus;
+  
+  // Audit log for manual insurance percentage overrides
+  override_audit?: TreatmentPlanServiceOverrideAudit;
+
   clinical_notes?: string;
   completed_at?: string;
   created_at: string;
@@ -195,7 +229,9 @@ export type InvestigationStatus =
   | 'requested'
   | 'pending'
   | 'result_uploaded'
-  | 'reviewed';
+  | 'results_received'
+  | 'reviewed'
+  | 'cancelled';
 
 export interface InvestigationRequest {
   id: string;
@@ -333,6 +369,7 @@ export interface ConsentRequest {
   signed_by_name?: string;
   signed_at?: string;
   signature_reference?: string;
+  signature_data_url?: string;
   reception_task_id?: string;
   created_at: string;
   updated_at: string;
@@ -347,6 +384,24 @@ export type FollowUpInterval =
   | '6_months'
   | 'custom';
 
+export type RecallType =
+  | 'post_operative'
+  | 'implant'
+  | 'suture_removal'
+  | 'cleaning_hygiene'
+  | 'prosthetic'
+  | 'orthodontic'
+  | 'general_treatment';
+
+export type FollowUpStatus =
+  | 'scheduled'
+  | 'due'
+  | 'contacted'
+  | 'completed'
+  | 'missed'
+  | 'cancelled'
+  | 'pending';
+
 export interface FollowUpPlan {
   id: string;
   organization_id: string;
@@ -354,12 +409,17 @@ export interface FollowUpPlan {
   doctor_id: string;
   branch_id: string;
   visit_id?: string;
+  recall_type?: RecallType;
   due_date: string;
   interval: FollowUpInterval;
   reason: string;
   notes?: string;
-  status: 'pending' | 'contacted' | 'scheduled' | 'completed' | 'cancelled';
+  status: FollowUpStatus;
   reception_task_id?: string;
+  contact_result?: string;
+  last_contacted_at?: string;
+  last_contacted_by_id?: string;
+  rescheduled_date?: string;
   created_at: string;
   updated_at: string;
 }
@@ -444,3 +504,101 @@ export interface VisitCompletionChecklist {
   prescription_completed_if_needed: boolean;
   follow_up_configured_if_needed: boolean;
 }
+
+export type LabOrderStatus =
+  | 'draft'
+  | 'sent_to_lab'
+  | 'in_production'
+  | 'received'
+  | 'delivered'
+  | 'fitted'
+  | 'cancelled';
+
+export type LabOrderTryInOrFinal = 'try_in' | 'final' | 'wax_up' | 'bisque_bake';
+
+export type DeliveryTransportStatus =
+  | 'assigned'
+  | 'picked_up'
+  | 'in_transit'
+  | 'delivered'
+  | 'failed_delivery';
+
+export interface LabOrder {
+  id: string;
+  organization_id: string;
+  patient_id: string;
+  doctor_id: string;
+  branch_id: string;
+  treatment_plan_id?: string;
+  treatment_service_id?: string;
+  lab_name?: string;
+  service_id: string;
+  service_name_ar?: string;
+  service_name_en?: string;
+  teeth: string[];
+  delivery_date: string;
+  required_delivery_date?: string;
+  shade_notes?: string;
+  materials_notes?: string;
+  notes?: string;
+
+  // Lab Order Manufacturing & Clinical Specification Fields
+  material?: string;
+  framework?: string;
+  try_in_or_final?: LabOrderTryInOrFinal;
+  pontic?: string;
+  abutment?: string;
+  tooth_count?: number;
+  product_type?: string;
+  lab_notes?: string;
+  doctor_notes?: string;
+  attachment_refs?: string[];
+
+  // Delivery Courier & Transport Tracking Fields
+  delivery_courier_id?: string;
+  delivery_courier_name?: string;
+  delivery_transport_status?: DeliveryTransportStatus;
+  delivery_pickup_time?: string;
+  delivery_delivered_time?: string;
+  delivery_notes?: string;
+  pickup_location?: string;
+  destination_branch_name?: string;
+
+  status: LabOrderStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export type LabOrderChatTopic =
+  | 'shade'
+  | 'material'
+  | 'design'
+  | 'tooth_selection'
+  | 'try_in_final'
+  | 'modification'
+  | 'delivery_manufacturing'
+  | 'general';
+
+export type LabOrderChatStatus = 'open' | 'resolved';
+
+export interface LabOrderChatMessage {
+  id: string;
+  lab_order_id: string;
+  organization_id: string;
+  sender_id: string;
+  sender_name: string;
+  sender_role: string;
+  message: string;
+  topic?: LabOrderChatTopic;
+  attachment_ref?: string;
+  created_at: string;
+  read_by?: string[];
+}
+
+export interface LabOrderChatThread {
+  lab_order_id: string;
+  organization_id: string;
+  status: LabOrderChatStatus;
+  updated_at: string;
+}
+

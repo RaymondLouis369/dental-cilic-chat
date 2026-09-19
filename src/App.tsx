@@ -21,13 +21,17 @@ import { AcceptanceTestRunner } from './components/AcceptanceTestRunner';
 import { OfflineIndicator } from './modules/pwa/OfflineIndicator';
 
 import { ReceptionDashboard } from './modules/reception/ReceptionDashboard';
+import { LabOrderManagementDashboard } from './modules/reception/LabOrderManagementDashboard';
 import { DoctorScheduleView } from './modules/scheduling/DoctorScheduleView';
 import { ServiceCatalogView } from './modules/services/ServiceCatalogView';
 import { CashPriceListView } from './modules/pricing/CashPriceListView';
 import { InsuranceManagementView } from './modules/insurance/InsuranceManagementView';
 import { CustomServicesReviewView } from './modules/pricing/CustomServicesReviewView';
+import { SupplierManagementView } from './modules/suppliers/SupplierManagementView';
 
 import { DoctorWorkspace } from './modules/clinical/DoctorWorkspace';
+import { LabUserWorkspace } from './modules/clinical/LabUserWorkspace';
+import { DeliveryUserWorkspace } from './modules/clinical/DeliveryUserWorkspace';
 import { PatientPortalShell } from './modules/patient-portal/PatientPortalShell';
 import { PatientLogin } from './modules/patient-portal/PatientLogin';
 
@@ -39,6 +43,8 @@ const MainLayout: React.FC<MainLayoutProps> = ({ onSwitchToPatient }) => {
   const { session } = useAuth();
   const [currentTab, setCurrentTab] = useState<NavTab>(() => {
     if (session?.role.key === 'receptionist') return 'reception';
+    if (session?.role.key === 'lab_user') return 'labWorkspace';
+    if (session?.role.key === 'delivery_user') return 'deliveryWorkspace';
     return 'dashboard';
   });
 
@@ -58,6 +64,8 @@ const MainLayout: React.FC<MainLayoutProps> = ({ onSwitchToPatient }) => {
         return <InsuranceManagementView />;
       case 'customServices':
         return <CustomServicesReviewView />;
+      case 'suppliers':
+        return <SupplierManagementView />;
       case 'organization':
         return <OrganizationView />;
       case 'branches':
@@ -71,11 +79,11 @@ const MainLayout: React.FC<MainLayoutProps> = ({ onSwitchToPatient }) => {
       case 'doctorWorkspace':
         return <DoctorWorkspace />;
       case 'labCoordination':
-        return <WorkspacePlaceholder type="labCoordination" />;
+        return <LabOrderManagementDashboard />;
       case 'labWorkspace':
-        return <WorkspacePlaceholder type="labWorkspace" />;
+        return <LabUserWorkspace />;
       case 'deliveryWorkspace':
-        return <WorkspacePlaceholder type="deliveryWorkspace" />;
+        return <DeliveryUserWorkspace />;
       case 'operations':
         return <WorkspacePlaceholder type="operations" />;
       case 'tests':

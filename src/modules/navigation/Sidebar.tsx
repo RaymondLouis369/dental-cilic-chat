@@ -32,6 +32,7 @@ export type NavTab =
   | 'pricing'
   | 'insurance'
   | 'customServices'
+  | 'suppliers'
   | 'organization'
   | 'branches'
   | 'users'
@@ -70,6 +71,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, onSelectTab }) => 
           { id: 'pricing' as NavTab, label: t.nav.pricing, icon: FileSpreadsheet },
           { id: 'insurance' as NavTab, label: t.nav.insurance, icon: Shield },
           { id: 'customServices' as NavTab, label: t.nav.customServices, icon: Tag },
+          { id: 'suppliers' as NavTab, label: t.nav.suppliers, icon: Truck, badge: 'Phase 8' },
           { id: 'organization' as NavTab, label: t.nav.organization, icon: Building2 },
           { id: 'branches' as NavTab, label: t.nav.branches, icon: GitBranch },
           { id: 'users' as NavTab, label: t.nav.users, icon: Users },
@@ -86,6 +88,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, onSelectTab }) => 
           { id: 'services' as NavTab, label: t.nav.services, icon: FileText },
           { id: 'pricing' as NavTab, label: t.nav.pricing, icon: FileSpreadsheet },
           { id: 'insurance' as NavTab, label: t.nav.insurance, icon: Shield },
+          { id: 'suppliers' as NavTab, label: t.nav.suppliers, icon: Truck, badge: 'Phase 8' },
           { id: 'branches' as NavTab, label: t.nav.branches, icon: GitBranch },
           { id: 'users' as NavTab, label: t.nav.users, icon: Users },
           { id: 'operations' as NavTab, label: t.nav.operations, icon: Clock },

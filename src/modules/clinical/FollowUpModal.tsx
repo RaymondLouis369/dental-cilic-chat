@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { FollowUpInterval } from '../../types/clinical';
+import { FollowUpInterval, RecallType } from '../../types/clinical';
 import { useLanguage } from '../i18n/LanguageContext';
 import { createFollowUpPlan } from '../../lib/clinicalStorage';
 import { useAuth } from '../auth/AuthContext';
@@ -9,6 +9,7 @@ import {
   X,
   Calendar,
   MessageSquare,
+  Tag,
 } from 'lucide-react';
 
 interface FollowUpModalProps {
@@ -29,6 +30,7 @@ export const FollowUpModal: React.FC<FollowUpModalProps> = ({
   const { isRtl } = useLanguage();
   const { session } = useAuth();
 
+  const [recallType, setRecallType] = useState<RecallType>('post_operative');
   const [interval, setInterval] = useState<FollowUpInterval>('7_days');
   const [dueDate, setDueDate] = useState(() => {
     const d = new Date();
@@ -40,6 +42,16 @@ export const FollowUpModal: React.FC<FollowUpModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   if (!isOpen) return null;
+
+  const recallTypes: { id: RecallType; label_ar: string; label_en: string }[] = [
+    { id: 'post_operative', label_ar: 'متابعة بعد الجراحة (Post-op)', label_en: 'Post-operative' },
+    { id: 'implant', label_ar: 'زراعة أسنان (Implant)', label_en: 'Implant' },
+    { id: 'suture_removal', label_ar: 'إزالة خيوط الجراحة (Suture Removal)', label_en: 'Suture Removal' },
+    { id: 'cleaning_hygiene', label_ar: 'تنظيف وتنضيد اللثة (Hygiene)', label_en: 'Cleaning/Hygiene' },
+    { id: 'prosthetic', label_ar: 'تركيبات أسنان (Prosthetic)', label_en: 'Prosthetic' },
+    { id: 'orthodontic', label_ar: 'متابعة تقويم (Orthodontic)', label_en: 'Orthodontic' },
+    { id: 'general_treatment', label_ar: 'متابعة علاجية عامة (General)', label_en: 'General Treatment' },
+  ];
 
   const intervals: {
     id: FollowUpInterval;
@@ -76,6 +88,7 @@ export const FollowUpModal: React.FC<FollowUpModalProps> = ({
         doctorId: session?.profile.id || 'prof_doc_01',
         branchId: session?.profile.branch_id || '11111111-1111-1111-1111-111111111111',
         visitId,
+        recallType,
         dueDate,
         interval,
         reason,
@@ -124,6 +137,26 @@ export const FollowUpModal: React.FC<FollowUpModalProps> = ({
 
         {/* Form Content */}
         <form onSubmit={handleSubmit} className="p-6 overflow-y-auto space-y-5 flex-1">
+          {/* Recall Type Select */}
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1.5">
+              <Tag className="w-3.5 h-3.5 text-emerald-600" />
+              <span>{isRtl ? 'نوع المتابعة والمراجعة (Recall Type):' : 'Recall & Follow-Up Type:'}</span>
+            </label>
+            <select
+              value={recallType}
+              onChange={(e) => setRecallType(e.target.value as RecallType)}
+              id="followup-recall-type-select"
+              className="w-full text-xs p-2.5 rounded-lg border border-slate-300 font-semibold bg-slate-50 text-slate-800"
+            >
+              {recallTypes.map((rt) => (
+                <option key={rt.id} value={rt.id}>
+                  {isRtl ? rt.label_ar : rt.label_en}
+                </option>
+              ))}
+            </select>
+          </div>
+
           {/* Preset Interval Buttons */}
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-2">

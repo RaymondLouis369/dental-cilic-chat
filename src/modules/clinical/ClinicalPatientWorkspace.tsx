@@ -43,8 +43,12 @@ import {
   addServiceToTreatmentPlan,
   updateTreatmentPlanServiceStatus,
   updateTreatmentPlanStatus,
+  getStoredLabOrders,
+  updateLabOrderStatus,
 } from '../../lib/clinicalStorage';
 import { DentalChartComponent } from './DentalChartComponent';
+import { InsuranceApprovalModal } from './InsuranceApprovalModal';
+import { TreatmentPlanApprovalTracker, InsuranceApprovalStatusBadge } from './TreatmentPlanApprovalTracker';
 import { MedicalAlertsModal } from './MedicalAlertsModal';
 import { VisitCompletionModal } from './VisitCompletionModal';
 import { PrescriptionModal } from './PrescriptionModal';
@@ -52,8 +56,10 @@ import { InvestigationModal } from './InvestigationModal';
 import { ReferralModal } from './ReferralModal';
 import { RecommendationModal } from './RecommendationModal';
 import { ConsentModal } from './ConsentModal';
+import { ConsentSignModal } from './ConsentSignModal';
 import { FollowUpModal } from './FollowUpModal';
 import { DoctorConsultationModal } from './DoctorConsultationModal';
+import { LabOrderFormModal } from './LabOrderFormModal';
 
 import {
   ArrowLeft,
@@ -80,9 +86,12 @@ import {
   Printer,
   ChevronRight,
   ShieldAlert,
+  ShieldCheck,
+  AlertCircle,
   Stethoscope,
   Eye,
   Check,
+  FlaskConical,
 } from 'lucide-react';
 
 interface ClinicalPatientWorkspaceProps {
@@ -109,8 +118,16 @@ export const ClinicalPatientWorkspace: React.FC<ClinicalPatientWorkspaceProps> =
   const [isReferralModalOpen, setIsReferralModalOpen] = useState(false);
   const [isRecommendationModalOpen, setIsRecommendationModalOpen] = useState(false);
   const [isConsentModalOpen, setIsConsentModalOpen] = useState(false);
+  const [isSignModalOpen, setIsSignModalOpen] = useState(false);
+  const [selectedConsentToSign, setSelectedConsentToSign] = useState<ConsentRequest | null>(null);
   const [isFollowUpModalOpen, setIsFollowUpModalOpen] = useState(false);
   const [isConsultationModalOpen, setIsConsultationModalOpen] = useState(false);
+  
+  // Lab Order Modal state
+  const [isLabOrderModalOpen, setIsLabOrderModalOpen] = useState(false);
+  const [selectedPlanIdForLab, setSelectedPlanIdForLab] = useState<string | undefined>(undefined);
+  const [selectedServiceIdForLab, setSelectedServiceIdForLab] = useState<string | undefined>(undefined);
+  const [selectedTeethForLab, setSelectedTeethForLab] = useState<string[]>([]);
 
   // Fetch Patient Identity
   const patient = getPatientById(patientId) || getStoredPatients()[0];
@@ -147,13 +164,42 @@ export const ClinicalPatientWorkspace: React.FC<ClinicalPatientWorkspaceProps> =
 
   // Add Procedure to existing plan state
   const [selectedPlanForService, setSelectedPlanForService] = useState<string | null>(null);
-  const [serviceNameEn, setServiceNameEn] = useState('Direct Composite Restoration');
-  const [serviceNameAr, setServiceNameAr] = useState('حشو تجميلي كمبوزيت مباشر');
-  const [serviceTooth, setServiceTooth] = useState('16');
-  const [serviceArea, setServiceArea] = useState('Occlusal (O)');
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
+  const [selectedServiceId, setSelectedServiceId] = useState<string>('');
+  const [serviceNameEn, setServiceNameEn] = useState('');
+  const [serviceNameAr, setServiceNameAr] = useState('');
+  const [serviceTooth, setServiceTooth] = useState('');
+  const [serviceArea, setServiceArea] = useState('');
   const [serviceNotes, setServiceNotes] = useState('');
 
+  // Insurance Approval Modal State
+  const [selectedServiceForApproval, setSelectedServiceForApproval] = useState<TreatmentPlanService | null>(null);
+  const [isApprovalModalOpen, setIsApprovalModalOpen] = useState(false);
+
+  const handleOpenApprovalModal = (service: TreatmentPlanService) => {
+    setSelectedServiceForApproval(service);
+    setIsApprovalModalOpen(true);
+  };
+
   const triggerRefresh = () => setRefreshKey((k) => k + 1);
+
+  // Data aggregations for patient
+  const allCatalogServices = getStoredServices();
+  const allCategories = getStoredServiceCategories();
+  const activeCategories = allCategories.filter((c) => c.active !== false);
+
+  const selectedCategoryObj = allCategories.find((c) => c.id === selectedCategoryId);
+  const activeServicesForCategory = allCatalogServices.filter((s) => {
+    const isActive = s.active !== false && s.is_active !== false;
+    if (!isActive) return false;
+    if (!selectedCategoryId) return false;
+    return (
+      s.category_id === selectedCategoryId ||
+      (selectedCategoryObj && s.category === selectedCategoryObj.id) ||
+      (selectedCategoryObj && s.category === selectedCategoryObj.code) ||
+      (selectedCategoryObj && s.category === selectedCategoryObj.name_en.toLowerCase())
+    );
+  });
 
   // Data aggregations for patient
   const alerts = getStoredMedicalAlerts().filter((a) => a.patient_id === patientId && a.active);
@@ -173,6 +219,14 @@ export const ClinicalPatientWorkspace: React.FC<ClinicalPatientWorkspaceProps> =
   const followUps = getStoredFollowUpPlans().filter((f) => f.patient_id === patientId);
   const tasks = getStoredDoctorTasks().filter((t) => t.patient_id === patientId);
   const consultations = getStoredDoctorConsultations().filter((c) => c.patient_id === patientId);
+  const labOrders = getStoredLabOrders(patientId);
+
+  const handleOpenLabOrderModal = (planId?: string, serviceId?: string, teeth?: string[]) => {
+    setSelectedPlanIdForLab(planId);
+    setSelectedServiceIdForLab(serviceId);
+    setSelectedTeethForLab(teeth || []);
+    setIsLabOrderModalOpen(true);
+  };
   const timeline = getPatientClinicalTimeline(patientId);
 
   // Save active visit changes
@@ -219,17 +273,49 @@ export const ClinicalPatientWorkspace: React.FC<ClinicalPatientWorkspaceProps> =
     triggerRefresh();
   };
 
-  // Add Service to Plan
+  // Add Service to Plan helpers
+  const handleOpenAddProcedure = (planId: string) => {
+    setSelectedPlanForService(planId);
+    setSelectedCategoryId('');
+    setSelectedServiceId('');
+    setServiceNameAr('');
+    setServiceNameEn('');
+    setServiceTooth('16');
+    setServiceArea('Occlusal (O)');
+    setServiceNotes('');
+  };
+
+  const handleCategoryChange = (catId: string) => {
+    setSelectedCategoryId(catId);
+    setSelectedServiceId('');
+    setServiceNameAr('');
+    setServiceNameEn('');
+  };
+
+  const handleServiceChange = (srvId: string) => {
+    setSelectedServiceId(srvId);
+    const chosen = activeServicesForCategory.find((s) => s.id === srvId);
+    if (chosen) {
+      setServiceNameAr(chosen.name_ar);
+      setServiceNameEn(chosen.name_en);
+    } else {
+      setServiceNameAr('');
+      setServiceNameEn('');
+    }
+  };
+
   const handleAddServiceToPlan = (planId: string) => {
     if (!serviceNameAr.trim()) return;
+
+    const chosenService = allCatalogServices.find((s) => s.id === selectedServiceId);
 
     addServiceToTreatmentPlan({
       treatmentPlanId: planId,
       patientId,
       doctorId,
       branchId,
-      serviceId: 'srv_gen_' + Date.now(),
-      serviceCode: 'DNT-' + Math.floor(100 + Math.random() * 900),
+      serviceId: chosenService ? chosenService.id : ('srv_gen_' + Date.now()),
+      serviceCode: chosenService ? chosenService.code : ('DNT-' + Math.floor(100 + Math.random() * 900)),
       serviceNameAr,
       serviceNameEn,
       toothNumber: serviceTooth || undefined,
@@ -239,7 +325,12 @@ export const ClinicalPatientWorkspace: React.FC<ClinicalPatientWorkspaceProps> =
     });
 
     setSelectedPlanForService(null);
-    setServiceTooth('16');
+    setSelectedCategoryId('');
+    setSelectedServiceId('');
+    setServiceNameAr('');
+    setServiceNameEn('');
+    setServiceTooth('');
+    setServiceArea('');
     setServiceNotes('');
     triggerRefresh();
   };
@@ -483,6 +574,8 @@ export const ClinicalPatientWorkspace: React.FC<ClinicalPatientWorkspaceProps> =
             <DentalChartComponent
               patientId={patientId}
               onEntriesChange={triggerRefresh}
+              activeTreatmentPlanId={treatmentPlans[0]?.id}
+              onServiceAdded={triggerRefresh}
             />
           </div>
         )}
@@ -716,15 +809,26 @@ export const ClinicalPatientWorkspace: React.FC<ClinicalPatientWorkspaceProps> =
                 </p>
               </div>
               {!isCreatingPlan && (
-                <button
-                  type="button"
-                  id="create-treatment-plan-btn"
-                  onClick={() => setIsCreatingPlan(true)}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>{isRtl ? 'إنشاء خطة علاجية جديدة' : 'New Treatment Plan'}</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    id="create-lab-order-btn"
+                    onClick={() => handleOpenLabOrderModal()}
+                    className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all"
+                  >
+                    <FlaskConical className="w-4 h-4" />
+                    <span>{isRtl ? 'طلب عمل معملي' : 'New Lab Order'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    id="create-treatment-plan-btn"
+                    onClick={() => setIsCreatingPlan(true)}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>{isRtl ? 'إنشاء خطة علاجية جديدة' : 'New Treatment Plan'}</span>
+                  </button>
+                </div>
               )}
             </div>
 
@@ -860,7 +964,18 @@ export const ClinicalPatientWorkspace: React.FC<ClinicalPatientWorkspaceProps> =
 
                         <button
                           type="button"
-                          onClick={() => setSelectedPlanForService(plan.id)}
+                          id={`plan-lab-order-btn-${plan.id}`}
+                          onClick={() => handleOpenLabOrderModal(plan.id)}
+                          className="px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all"
+                        >
+                          <FlaskConical className="w-3.5 h-3.5" />
+                          <span>{isRtl ? 'طلب عمل معملي' : 'Lab Order'}</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          id={`add-procedure-btn-${plan.id}`}
+                          onClick={() => handleOpenAddProcedure(plan.id)}
                           className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-xs"
                         >
                           <Plus className="w-3.5 h-3.5" />
@@ -870,9 +985,15 @@ export const ClinicalPatientWorkspace: React.FC<ClinicalPatientWorkspaceProps> =
                     </div>
 
                     {/* Services / Procedures Table */}
-                    <div className="p-5">
-                      <h5 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">
-                        {isRtl ? 'الإجراءات والمراحل العلاجية المتسلسلة:' : 'Sequenced Procedures & Interventions:'}
+                    <div className="p-5 space-y-4">
+                      <TreatmentPlanApprovalTracker
+                        services={plan.services}
+                        isRtl={isRtl}
+                        onOpenApprovalModal={handleOpenApprovalModal}
+                      />
+
+                      <h5 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                        {isRtl ? 'الإجراءات وتفاصيل تغطية التأمين وتحمل المريض:' : 'Procedures & Insurance Coverage Breakdown:'}
                       </h5>
 
                       {plan.services.length === 0 ? (
@@ -880,78 +1001,170 @@ export const ClinicalPatientWorkspace: React.FC<ClinicalPatientWorkspaceProps> =
                           {isRtl ? 'لا توجد إجراءات مضافة لهذه الخطة حتى الآن.' : 'No procedures added yet.'}
                         </p>
                       ) : (
-                        <div className="space-y-2.5">
-                          {plan.services
-                            .sort((a, b) => a.sequence_order - b.sequence_order)
-                            .map((srv, sIdx) => (
-                              <div
-                                key={srv.id}
-                                className="p-3 rounded-xl border border-slate-200 bg-slate-50/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-                              >
-                                <div className="flex items-start gap-3">
-                                  <span className="w-6 h-6 rounded-full bg-blue-100 text-blue-800 text-xs font-black flex items-center justify-center shrink-0">
-                                    {sIdx + 1}
-                                  </span>
-                                  <div>
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                      <strong className="text-xs font-bold text-slate-900">
-                                        {isRtl ? srv.service_name_ar : srv.service_name_en}
-                                      </strong>
-                                      {srv.tooth_number && (
-                                        <span className="px-2 py-0.5 bg-slate-200 text-slate-800 rounded font-mono text-[11px] font-bold">
-                                          #{srv.tooth_number}
-                                        </span>
-                                      )}
-                                      {srv.area && (
-                                        <span className="text-[11px] text-slate-500">
-                                          ({srv.area})
-                                        </span>
-                                      )}
-                                    </div>
-                                    {srv.clinical_notes && (
-                                      <p className="text-[11px] text-slate-600 mt-0.5">
-                                        {srv.clinical_notes}
-                                      </p>
-                                    )}
-                                  </div>
-                                </div>
+                        <div className="overflow-x-auto rounded-xl border border-slate-200">
+                          <table className="w-full text-xs text-left text-slate-700">
+                            <thead className="bg-slate-100 text-slate-800 font-bold border-b border-slate-200">
+                              <tr>
+                                <th className="p-3 text-center">#</th>
+                                <th className="p-3">{isRtl ? 'الإجراء (Service)' : 'Service'}</th>
+                                <th className="p-3">{isRtl ? 'الفئة (Category)' : 'Category'}</th>
+                                <th className="p-3 text-center">{isRtl ? 'الأسنان (Teeth)' : 'Teeth'}</th>
+                                <th className="p-3 text-right">{isRtl ? 'إجمالي السعر' : 'Total Price'}</th>
+                                <th className="p-3 text-right">{isRtl ? 'تغطية التأمين' : 'Insurance Coverage'}</th>
+                                <th className="p-3 text-right">{isRtl ? 'تحمل المريض' : 'Patient Copay'}</th>
+                                <th className="p-3 text-center">{isRtl ? 'موافقة التأمين' : 'Insurance Approval'}</th>
+                                <th className="p-3 text-center">{isRtl ? 'الحالة السريرية' : 'Clinical Status'}</th>
+                                <th className="p-3 text-center">{isRtl ? 'أمر معمل' : 'Lab Order'}</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-200 bg-white font-medium">
+                              {plan.services
+                                .sort((a, b) => a.sequence_order - b.sequence_order)
+                                .map((srv, sIdx) => {
+                                  const approvalStatus = srv.approval_status || (srv.requires_approval ? 'pending_approval' : 'direct_coverage');
+                                  const origCovPct = srv.coverage_percentage ?? 80;
+                                  const apprCovPct = srv.approved_coverage_percentage !== undefined ? srv.approved_coverage_percentage : origCovPct;
+                                  const hasOverride = srv.override_audit !== undefined;
 
-                                <div className="flex items-center gap-2 self-end sm:self-auto">
-                                  <select
-                                    value={srv.status}
-                                    onChange={(e) =>
-                                      handleUpdateServiceStatus(
-                                        srv.id,
-                                        e.target.value as TreatmentPlanService['status']
-                                      )
-                                    }
-                                    className={`text-xs font-bold p-1.5 rounded-lg border ${
-                                      srv.status === 'completed'
-                                        ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
-                                        : srv.status === 'in_progress'
-                                        ? 'bg-blue-50 text-blue-800 border-blue-300'
-                                        : 'bg-white text-slate-700 border-slate-300'
-                                    }`}
-                                  >
-                                    <option value="planned">{isRtl ? 'مخطط' : 'Planned'}</option>
-                                    <option value="scheduled">{isRtl ? 'مجدول' : 'Scheduled'}</option>
-                                    <option value="in_progress">{isRtl ? 'قيد الإجراء' : 'In Progress'}</option>
-                                    <option value="completed">{isRtl ? 'مكتمل ✓' : 'Completed ✓'}</option>
-                                    <option value="cancelled">{isRtl ? 'ملغي' : 'Cancelled'}</option>
-                                  </select>
-                                </div>
-                              </div>
-                            ))}
+                                  return (
+                                    <tr key={srv.id} className="hover:bg-slate-50 transition-all">
+                                      <td className="p-3 text-center font-bold text-slate-400">{sIdx + 1}</td>
+                                      
+                                      {/* Service Name & Code */}
+                                      <td className="p-3">
+                                        <div className="font-bold text-slate-900">
+                                          {isRtl ? srv.service_name_ar : srv.service_name_en}
+                                        </div>
+                                        {srv.service_code && (
+                                          <span className="text-[10px] text-slate-400 font-mono">
+                                            {srv.service_code}
+                                          </span>
+                                        )}
+                                        {srv.clinical_notes && (
+                                          <p className="text-[11px] text-slate-500 italic mt-0.5">
+                                            {srv.clinical_notes}
+                                          </p>
+                                        )}
+                                      </td>
+
+                                      {/* Category */}
+                                      <td className="p-3 text-slate-600 font-semibold">
+                                        {isRtl ? srv.category_name_ar || 'خدمات عامة' : srv.category_name_en || 'General Dental'}
+                                      </td>
+
+                                      {/* Teeth */}
+                                      <td className="p-3 text-center">
+                                        {srv.tooth_number ? (
+                                          <span className="px-2 py-0.5 bg-slate-100 text-slate-800 rounded-md font-mono text-[11px] font-bold border border-slate-200">
+                                            #{srv.tooth_number}
+                                          </span>
+                                        ) : (
+                                          <span className="text-slate-400 text-[11px]">-</span>
+                                        )}
+                                      </td>
+
+                                      {/* Total Price */}
+                                      <td className="p-3 text-right font-mono font-bold text-slate-900">
+                                        {(srv.total_price || 0).toLocaleString('en-US')} EGP
+                                      </td>
+
+                                      {/* Insurance Coverage */}
+                                      <td className="p-3 text-right">
+                                        <div className="font-mono font-bold text-teal-700">
+                                          {(srv.insurance_coverage_amount || 0).toLocaleString('en-US')} EGP
+                                        </div>
+                                        <div className="flex items-center justify-end gap-1 text-[10px] text-teal-600 font-semibold">
+                                          <span>({apprCovPct}%)</span>
+                                          {hasOverride && (
+                                            <span
+                                              title={isRtl ? `نسبة تعاقدية: ${origCovPct}% (تعديل استثنائي معتمد)` : `Original: ${origCovPct}% (Approved override)`}
+                                              className="px-1 py-0.2 bg-amber-100 text-amber-800 border border-amber-300 rounded font-black cursor-help"
+                                            >
+                                              {isRtl ? 'معدل' : 'OVR'}
+                                            </span>
+                                          )}
+                                        </div>
+                                      </td>
+
+                                      {/* Patient Copay */}
+                                      <td className="p-3 text-right">
+                                        <div className="font-mono font-bold text-amber-900">
+                                          {(srv.patient_copay_amount || 0).toLocaleString('en-US')} EGP
+                                        </div>
+                                        <div className="text-[10px] text-amber-700 font-semibold">
+                                          ({100 - apprCovPct}%)
+                                        </div>
+                                      </td>
+
+                                      {/* Approval Status Badge with Click-to-Update */}
+                                      <td className="p-3 text-center">
+                                        <InsuranceApprovalStatusBadge
+                                          service={srv}
+                                          isRtl={isRtl}
+                                          onOpenApprovalModal={handleOpenApprovalModal}
+                                        />
+                                      </td>
+
+                                      {/* Clinical Service Status */}
+                                      <td className="p-3 text-center">
+                                        <select
+                                          value={srv.status}
+                                          onChange={(e) =>
+                                            handleUpdateServiceStatus(
+                                              srv.id,
+                                              e.target.value as TreatmentPlanService['status']
+                                            )
+                                          }
+                                          className={`text-xs font-bold p-1 rounded-lg border ${
+                                            srv.status === 'completed'
+                                              ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                              : srv.status === 'in_progress'
+                                              ? 'bg-blue-50 text-blue-800 border-blue-300'
+                                              : 'bg-white text-slate-700 border-slate-300'
+                                          }`}
+                                        >
+                                          <option value="planned">{isRtl ? 'مخطط' : 'Planned'}</option>
+                                          <option value="scheduled">{isRtl ? 'مجدول' : 'Scheduled'}</option>
+                                          <option value="in_progress">{isRtl ? 'قيد الإجراء' : 'In Progress'}</option>
+                                          <option value="completed">{isRtl ? 'مكتمل ✓' : 'Completed ✓'}</option>
+                                          <option value="cancelled">{isRtl ? 'ملغي' : 'Cancelled'}</option>
+                                        </select>
+                                      </td>
+
+                                      {/* Lab Order Action */}
+                                      <td className="p-3 text-center">
+                                        <button
+                                          type="button"
+                                          title={isRtl ? 'طلب تركيبات معملية لهذا الإجراء' : 'Order dental lab work'}
+                                          onClick={() =>
+                                            handleOpenLabOrderModal(
+                                              plan.id,
+                                              srv.service_id,
+                                              srv.tooth_number ? [srv.tooth_number] : []
+                                            )
+                                          }
+                                          className="px-2.5 py-1 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1 transition-all shadow-2xs"
+                                        >
+                                          <FlaskConical className="w-3.5 h-3.5" />
+                                          <span>{isRtl ? 'طلب معمل' : 'Lab Order'}</span>
+                                        </button>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                            </tbody>
+                          </table>
                         </div>
                       )}
                     </div>
 
                     {/* Add Procedure Modal/Inline for this plan */}
                     {selectedPlanForService === plan.id && (
-                      <div className="p-5 bg-blue-50/50 border-t border-blue-200 space-y-3 animate-fadeIn">
+                      <div className="p-5 bg-blue-50/50 border-t border-blue-200 space-y-4 animate-fadeIn">
                         <div className="flex items-center justify-between">
-                          <h5 className="text-xs font-bold text-blue-950">
-                            {isRtl ? 'إضافة إجراء جديد للخطة العلاجية:' : 'Add New Clinical Procedure:'}
+                          <h5 className="text-xs font-bold text-blue-950 flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-blue-600"></span>
+                            <span>{isRtl ? 'إضافة إجراء جديد للخطة العلاجية:' : 'Add New Clinical Procedure:'}</span>
                           </h5>
                           <button
                             type="button"
@@ -962,31 +1175,69 @@ export const ClinicalPatientWorkspace: React.FC<ClinicalPatientWorkspaceProps> =
                           </button>
                         </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                          {/* 1. Category Selector */}
                           <div>
                             <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                              {isRtl ? 'اسم الإجراء (عربي):' : 'Procedure (Ar):'}
+                              {isRtl ? 'تصنيف الخدمة الطبية *:' : 'Service Category *:'}
                             </label>
-                            <input
-                              type="text"
-                              value={serviceNameAr}
-                              onChange={(e) => setServiceNameAr(e.target.value)}
-                              className="w-full text-xs p-2 rounded-lg border border-slate-300 bg-white"
-                            />
+                            <select
+                              id="procedure-category-select"
+                              value={selectedCategoryId}
+                              onChange={(e) => handleCategoryChange(e.target.value)}
+                              className="w-full text-xs p-2 rounded-lg border border-slate-300 bg-white font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            >
+                              <option value="">
+                                {isRtl ? '-- اختر التصنيف الطبي --' : '-- Select Category --'}
+                              </option>
+                              {activeCategories.map((cat) => (
+                                <option key={cat.id} value={cat.id}>
+                                  {isRtl ? cat.name_ar : cat.name_en}
+                                </option>
+                              ))}
+                            </select>
                           </div>
 
+                          {/* 2. Service Selector - Disabled until Category is selected */}
                           <div>
                             <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                              {isRtl ? 'اسم الإجراء (English):' : 'Procedure (En):'}
+                              {isRtl ? 'الخدمة / الإجراء الطبي *:' : 'Medical Service / Procedure *:'}
                             </label>
-                            <input
-                              type="text"
-                              value={serviceNameEn}
-                              onChange={(e) => setServiceNameEn(e.target.value)}
-                              className="w-full text-xs p-2 rounded-lg border border-slate-300 bg-white"
-                            />
+                            <select
+                              id="procedure-service-select"
+                              value={selectedServiceId}
+                              disabled={!selectedCategoryId}
+                              onChange={(e) => handleServiceChange(e.target.value)}
+                              className={`w-full text-xs p-2 rounded-lg border font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                                !selectedCategoryId
+                                  ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
+                                  : 'bg-white border-slate-300 text-slate-800'
+                              }`}
+                            >
+                              {!selectedCategoryId ? (
+                                <option value="">
+                                  {isRtl ? '⚠️ اختر التصنيف الطبي أولاً' : '⚠️ Select a category first'}
+                                </option>
+                              ) : activeServicesForCategory.length === 0 ? (
+                                <option value="">
+                                  {isRtl ? 'لا توجد خدمات مفعّلة في هذا التصنيف' : 'No active services in this category'}
+                                </option>
+                              ) : (
+                                <>
+                                  <option value="">
+                                    {isRtl ? '-- اختر الخدمة المفعّلة --' : '-- Select Active Service --'}
+                                  </option>
+                                  {activeServicesForCategory.map((srv) => (
+                                    <option key={srv.id} value={srv.id}>
+                                      {isRtl ? srv.name_ar : srv.name_en} ({srv.code})
+                                    </option>
+                                  ))}
+                                </>
+                              )}
+                            </select>
                           </div>
 
+                          {/* Tooth # */}
                           <div>
                             <label className="block text-[11px] font-bold text-slate-700 mb-1">
                               {isRtl ? 'رقم السن المستهدف:' : 'Tooth #:'}
@@ -1000,6 +1251,7 @@ export const ClinicalPatientWorkspace: React.FC<ClinicalPatientWorkspaceProps> =
                             />
                           </div>
 
+                          {/* Surface / Area */}
                           <div>
                             <label className="block text-[11px] font-bold text-slate-700 mb-1">
                               {isRtl ? 'السطح / المنطقة:' : 'Surface / Area:'}
@@ -1012,9 +1264,37 @@ export const ClinicalPatientWorkspace: React.FC<ClinicalPatientWorkspaceProps> =
                               className="w-full text-xs p-2 rounded-lg border border-slate-300 bg-white"
                             />
                           </div>
+
+                          {/* Service Name (Ar) */}
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                              {isRtl ? 'اسم الإجراء (عربي):' : 'Procedure (Ar):'}
+                            </label>
+                            <input
+                              type="text"
+                              value={serviceNameAr}
+                              onChange={(e) => setServiceNameAr(e.target.value)}
+                              placeholder={isRtl ? 'مسمى الإجراء بالعربية' : 'Arabic name'}
+                              className="w-full text-xs p-2 rounded-lg border border-slate-300 bg-white"
+                            />
+                          </div>
+
+                          {/* Service Name (En) */}
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                              {isRtl ? 'اسم الإجراء (English):' : 'Procedure (En):'}
+                            </label>
+                            <input
+                              type="text"
+                              value={serviceNameEn}
+                              onChange={(e) => setServiceNameEn(e.target.value)}
+                              placeholder={isRtl ? 'مسمى الإجراء بالإنجليزية' : 'English name'}
+                              className="w-full text-xs p-2 rounded-lg border border-slate-300 bg-white"
+                            />
+                          </div>
                         </div>
 
-                        <div className="flex items-center justify-end gap-2 pt-2">
+                        <div className="flex items-center justify-end gap-2 pt-2 border-t border-blue-100">
                           <button
                             type="button"
                             onClick={() => setSelectedPlanForService(null)}
@@ -1024,8 +1304,13 @@ export const ClinicalPatientWorkspace: React.FC<ClinicalPatientWorkspaceProps> =
                           </button>
                           <button
                             type="button"
+                            disabled={!serviceNameAr.trim()}
                             onClick={() => handleAddServiceToPlan(plan.id)}
-                            className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg shadow-xs"
+                            className={`px-4 py-1.5 text-white text-xs font-bold rounded-lg shadow-xs ${
+                              serviceNameAr.trim()
+                                ? 'bg-blue-600 hover:bg-blue-700'
+                                : 'bg-slate-300 cursor-not-allowed'
+                            }`}
                           >
                             {isRtl ? 'تأكيد إضافة الإجراء' : 'Add Procedure'}
                           </button>
@@ -1036,6 +1321,63 @@ export const ClinicalPatientWorkspace: React.FC<ClinicalPatientWorkspaceProps> =
                 ))}
               </div>
             )}
+
+            {/* Dental Lab Orders Log for Patient */}
+            <div className="bg-white p-6 rounded-2xl border border-purple-200 shadow-xs space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center font-bold">
+                    <FlaskConical className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-slate-900">
+                      {isRtl ? 'أوامر العمل المعملي وتركيبات الأسنان (Dental Lab Orders)' : 'Patient Dental Lab Orders'}
+                    </h4>
+                    <p className="text-xs text-slate-500">
+                      {isRtl ? 'سجل متابعة تركيبة الكراون والمقاسات والتسليم مع المعامل الخارجية' : 'Track impression dispatches, shades, materials, and delivery status.'}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  id="plans-tab-issue-lab-order-btn"
+                  onClick={() => handleOpenLabOrderModal()}
+                  className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>{isRtl ? 'إصدار أمر معمل' : 'Issue Lab Order'}</span>
+                </button>
+              </div>
+
+              {labOrders.length === 0 ? (
+                <div className="p-4 bg-purple-50/50 rounded-xl border border-dashed border-purple-200 text-center text-xs text-purple-700 font-medium">
+                  {isRtl ? 'لا توجد طلبات عمل معملي صادرة لهذا المريض حتى الآن.' : 'No dental lab orders recorded for this patient.'}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {labOrders.map((order) => (
+                    <div key={order.id} className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-purple-900">
+                          {isRtl ? order.service_name_ar : order.service_name_en}
+                        </span>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 uppercase border border-purple-200 font-mono">
+                          {order.status.replace('_', ' ')}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-[11px] text-slate-600 font-medium">
+                        <span>{isRtl ? 'الأسنان: ' : 'Teeth: '} {order.teeth.map(t => `#${t}`).join(', ')}</span>
+                        <span>{isRtl ? 'التسليم: ' : 'Delivery: '} {order.delivery_date}</span>
+                      </div>
+                      <div className="text-[11px] text-slate-500 flex items-center justify-between pt-1 border-t border-slate-200">
+                        <span>{order.lab_name}</span>
+                        <span>{isRtl ? 'اللون: ' : 'Shade: '} {order.shade_notes || 'Standard'}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -1390,6 +1732,8 @@ export const ClinicalPatientWorkspace: React.FC<ClinicalPatientWorkspaceProps> =
                         className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
                           c.status === 'signed'
                             ? 'bg-emerald-100 text-emerald-800'
+                            : c.status === 'declined'
+                            ? 'bg-red-100 text-red-800'
                             : 'bg-amber-100 text-amber-800'
                         }`}
                       >
@@ -1397,9 +1741,43 @@ export const ClinicalPatientWorkspace: React.FC<ClinicalPatientWorkspaceProps> =
                       </span>
                     </div>
                     <p className="text-xs text-slate-600 leading-relaxed">{isRtl ? c.description_ar : c.description_en}</p>
-                    {c.signed_by_name && (
-                      <div className="text-[11px] text-emerald-800 bg-emerald-50 p-2 rounded-lg font-bold">
-                        ✓ {isRtl ? 'تم التوقيع بواسطة: ' : 'Signed by: '} {c.signed_by_name}
+
+                    {c.status === 'signed' && (
+                      <div className="text-[11px] text-emerald-800 bg-emerald-50 p-3 rounded-xl border border-emerald-200 space-y-2">
+                        <div className="font-bold">
+                          ✓ {isRtl ? 'تم التوقيع بواسطة: ' : 'Signed by: '} {c.signed_by_name}
+                        </div>
+                        {c.signed_at && (
+                          <div className="text-[10px] text-emerald-700 font-mono">
+                            {new Date(c.signed_at).toLocaleString(isRtl ? 'ar-EG' : 'en-US')}
+                          </div>
+                        )}
+                        {c.signature_data_url && (
+                          <div className="mt-1 bg-white p-2 rounded-lg border border-emerald-200 max-w-xs">
+                            <img
+                              src={c.signature_data_url}
+                              alt="Patient Signature"
+                              className="h-16 object-contain mx-auto"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {(c.status === 'requested' || c.status === 'pending_signature') && (
+                      <div className="pt-2 border-t border-slate-100 flex justify-end">
+                        <button
+                          type="button"
+                          id={`sign-consent-btn-${c.id}`}
+                          onClick={() => {
+                            setSelectedConsentToSign(c);
+                            setIsSignModalOpen(true);
+                          }}
+                          className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg text-xs flex items-center gap-1.5 shadow-xs transition-all"
+                        >
+                          <FileSignature className="w-3.5 h-3.5" />
+                          <span>{isRtl ? 'توقيع الإقرار' : 'Sign Consent'}</span>
+                        </button>
                       </div>
                     )}
                   </div>
@@ -1574,6 +1952,17 @@ export const ClinicalPatientWorkspace: React.FC<ClinicalPatientWorkspaceProps> =
         onConsentCreated={triggerRefresh}
       />
 
+      <ConsentSignModal
+        isOpen={isSignModalOpen}
+        onClose={() => {
+          setIsSignModalOpen(false);
+          setSelectedConsentToSign(null);
+        }}
+        consent={selectedConsentToSign}
+        patientName={patient ? `${patient.first_name} ${patient.last_name}` : ''}
+        onConsentUpdated={triggerRefresh}
+      />
+
       <FollowUpModal
         patientId={patientId}
         visitId={activeVisit?.id}
@@ -1587,6 +1976,27 @@ export const ClinicalPatientWorkspace: React.FC<ClinicalPatientWorkspaceProps> =
         isOpen={isConsultationModalOpen}
         onClose={() => setIsConsultationModalOpen(false)}
         onConsultationCreated={triggerRefresh}
+      />
+
+      <InsuranceApprovalModal
+        isOpen={isApprovalModalOpen}
+        onClose={() => setIsApprovalModalOpen(false)}
+        service={selectedServiceForApproval}
+        patientName={patient ? `${patient.first_name} ${patient.last_name}` : ''}
+        onUpdated={triggerRefresh}
+      />
+
+      <LabOrderFormModal
+        isOpen={isLabOrderModalOpen}
+        onClose={() => setIsLabOrderModalOpen(false)}
+        patientId={patientId}
+        doctorId={doctorId}
+        branchId={branchId}
+        organizationId={orgId}
+        treatmentPlanId={selectedPlanIdForLab}
+        initialServiceId={selectedServiceIdForLab}
+        initialTeeth={selectedTeethForLab}
+        onOrderCreated={triggerRefresh}
       />
     </div>
   );

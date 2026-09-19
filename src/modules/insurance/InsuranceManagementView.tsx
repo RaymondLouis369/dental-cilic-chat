@@ -43,15 +43,15 @@ export const InsuranceManagementView: React.FC = () => {
   const refresh = () => setRefreshKey((k) => k + 1);
 
   const companies: InsuranceCompany[] = useMemo(
-    () => getStoredInsuranceCompanies(),
+    () => getStoredInsuranceCompanies() || [],
     [refreshKey]
   );
-  const plans: InsurancePlan[] = useMemo(() => getStoredInsurancePlans(), [refreshKey]);
+  const plans: InsurancePlan[] = useMemo(() => getStoredInsurancePlans() || [], [refreshKey]);
   const templates: InsuranceCardTemplate[] = useMemo(
-    () => getStoredInsuranceCardTemplates(),
+    () => getStoredInsuranceCardTemplates() || [],
     [refreshKey]
   );
-  const services: Service[] = useMemo(() => getStoredServices(), []);
+  const services: Service[] = useMemo(() => getStoredServices() || [], []);
 
   // Company Modal State
   const [isCompanyModalOpen, setIsCompanyModalOpen] = useState(false);
@@ -72,7 +72,7 @@ export const InsuranceManagementView: React.FC = () => {
   const [testPlanId, setTestPlanId] = useState<string>('');
 
   const plansForTestCompany = useMemo(() => {
-    return plans.filter((p) => p.company_id === testCompanyId);
+    return (plans || []).filter((p) => p && p.company_id === testCompanyId);
   }, [plans, testCompanyId]);
 
   const testCalculation = useMemo(() => {
@@ -89,7 +89,7 @@ export const InsuranceManagementView: React.FC = () => {
     setEditingCompanyId(null);
     setCompNameAr('');
     setCompNameEn('');
-    setCompCode(`INS-${String(companies.length + 1).padStart(2, '0')}`);
+    setCompCode(`INS-${String(((companies || []).length + 1)).padStart(2, '0')}`);
     setCompPhone('+20212345678');
     setCompEmail('');
     setCompIsContracted(true);
@@ -188,7 +188,7 @@ export const InsuranceManagementView: React.FC = () => {
           }`}
         >
           <Building2 className="w-4 h-4" />
-          <span>{isAr ? 'شركات التأمين' : 'Companies'} ({companies.length})</span>
+          <span>{isAr ? 'شركات التأمين' : 'Companies'} ({(companies || []).length})</span>
         </button>
 
         <button
@@ -200,7 +200,7 @@ export const InsuranceManagementView: React.FC = () => {
           }`}
         >
           <FileCheck className="w-4 h-4" />
-          <span>{isAr ? 'خطط التغطية ونسب التحمل' : 'Coverage Plans'} ({plans.length})</span>
+          <span>{isAr ? 'خطط التغطية ونسب التحمل' : 'Coverage Plans'} ({(plans || []).length})</span>
         </button>
 
         <button
@@ -212,7 +212,7 @@ export const InsuranceManagementView: React.FC = () => {
           }`}
         >
           <CreditCard className="w-4 h-4" />
-          <span>{isAr ? 'قوالب بطاقات التأمين' : 'Card Templates'} ({templates.length})</span>
+          <span>{isAr ? 'قوالب بطاقات التأمين' : 'Card Templates'} ({(templates || []).length})</span>
         </button>
 
         <button
@@ -231,7 +231,7 @@ export const InsuranceManagementView: React.FC = () => {
       {/* Tab 1: Companies */}
       {activeTab === 'companies' && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {companies.map((comp) => (
+          {(companies || []).map((comp) => (
             <div
               key={comp.id}
               className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm text-xs flex flex-col justify-between space-y-4"
@@ -317,8 +317,8 @@ export const InsuranceManagementView: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {plans.map((p) => {
-                const comp = companies.find((c) => c.id === p.company_id);
+              {(plans || []).map((p) => {
+                const comp = (companies || []).find((c) => c && c.id === p.company_id);
                 return (
                   <tr key={p.id} className="hover:bg-slate-50">
                     <td className="px-3.5 py-3 font-mono font-bold text-teal-700">{p.code}</td>
@@ -362,8 +362,8 @@ export const InsuranceManagementView: React.FC = () => {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {templates.map((tpl) => {
-              const comp = companies.find((c) => c.id === tpl.company_id);
+            {(templates || []).map((tpl) => {
+              const comp = (companies || []).find((c) => c && c.id === tpl.company_id);
               return (
                 <div
                   key={tpl.id}
@@ -384,7 +384,7 @@ export const InsuranceManagementView: React.FC = () => {
                       {isAr ? 'الحقول الإلزامية المعرفة بالقالب:' : 'Configured Fields:'}
                     </div>
                     <div className="grid grid-cols-2 gap-2">
-                      {tpl.fields_config.map((f) => (
+                      {(tpl.fields_config || []).map((f) => (
                         <div
                           key={f.field_key}
                           className="p-2 bg-slate-50 rounded-lg border border-slate-200 text-[11px]"
@@ -436,7 +436,7 @@ export const InsuranceManagementView: React.FC = () => {
                 onChange={(e) => setTestServiceId(e.target.value)}
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl"
               >
-                {services.map((s) => (
+                {(services || []).map((s) => (
                   <option key={s.id} value={s.id}>
                     {isAr ? s.name_ar : s.name_en} ({s.code})
                   </option>
@@ -458,7 +458,7 @@ export const InsuranceManagementView: React.FC = () => {
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl"
               >
                 <option value="">{isAr ? '-- غير مؤمن (نقدي فقط) --' : '-- Cash Only --'}</option>
-                {companies.map((c) => (
+                {(companies || []).map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name_ar} {!c.is_contracted ? (isAr ? '(غير متعاقدة)' : '(Uncontracted)') : ''}
                   </option>
@@ -478,7 +478,7 @@ export const InsuranceManagementView: React.FC = () => {
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl disabled:opacity-50"
               >
                 <option value="">{isAr ? '-- خطة افتراضية --' : '-- Default Plan --'}</option>
-                {plansForTestCompany.map((p) => (
+                {(plansForTestCompany || []).map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name_ar} (تحمل {p.default_copay_percent}%)
                   </option>

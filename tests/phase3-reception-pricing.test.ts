@@ -4,6 +4,12 @@ import {
   getStoredWaitingList,
   getStoredDoctorShifts,
   getStoredServices,
+  getStoredServiceCategories,
+  saveServiceCategory,
+  deactivateServiceCategory,
+  reactivateServiceCategory,
+  deleteServiceCategory,
+  isCategoryInUse,
   getStoredPriceLists,
   getStoredPriceListVersions,
   getStoredInsuranceCompanies,
@@ -339,5 +345,69 @@ describe('PHASE 03 — DENTAL CLINIC RECEPTION, SCHEDULING, SERVICES & PRICING E
     expect(hasPermission('doctor', 'booking.manage')).toBe(true);
     expect(hasPermission('doctor', 'reception.manage')).toBe(false);
     expect(hasPermission('doctor', 'pricing.manage')).toBe(false);
+  });
+
+  // 14. Service Categories CRUD with organization_id Scoping & Description
+  it('14. Manages Service Categories CRUD with name_ar, name_en, description, active status, and organization_id scoping', () => {
+    // 1. Create a new category with description and org scope
+    const createdCat = saveServiceCategory({
+      organization_id: DEFAULT_EGYPT_ORG.id,
+      code: 'CAT-PERIO',
+      name_ar: 'أمراض وجراحة اللثة',
+      name_en: 'Periodontics',
+      description: 'علاج التهابات اللثة وتنظيف الجيوب اللثوية وتجهيز ما قبل التركيبات',
+      active: true,
+      display_order: 9,
+    });
+
+    expect(createdCat.id).toBeDefined();
+    expect(createdCat.organization_id).toBe(DEFAULT_EGYPT_ORG.id);
+    expect(createdCat.code).toBe('CAT-PERIO');
+    expect(createdCat.name_ar).toBe('أمراض وجراحة اللثة');
+    expect(createdCat.name_en).toBe('Periodontics');
+    expect(createdCat.description).toBe('علاج التهابات اللثة وتنظيف الجيوب اللثوية وتجهيز ما قبل التركيبات');
+    expect(createdCat.active).toBe(true);
+
+    // 2. Fetch scoped categories for org
+    const orgCats = getStoredServiceCategories(DEFAULT_EGYPT_ORG.id);
+    expect(orgCats.some((c) => c.id === createdCat.id)).toBe(true);
+
+    // 3. Update category details
+    const updatedCat = saveServiceCategory({
+      id: createdCat.id,
+      organization_id: DEFAULT_EGYPT_ORG.id,
+      code: 'CAT-PERIO',
+      name_ar: 'طب وجراحة اللثة والأنسجة المحيطة',
+      name_en: 'Periodontology & Implant Maintenance',
+      description: 'تخصص اللثة وتكثيف العظام المحيط بالأسنان والزرعات',
+      active: true,
+      display_order: 9,
+    });
+
+    expect(updatedCat.name_ar).toBe('طب وجراحة اللثة والأنسجة المحيطة');
+    expect(updatedCat.name_en).toBe('Periodontology & Implant Maintenance');
+    expect(updatedCat.description).toBe('تخصص اللثة وتكثيف العظام المحيط بالأسنان والزرعات');
+
+    // 4. Deactivate and reactivate
+    const deactOk = deactivateServiceCategory(createdCat.id);
+    expect(deactOk).toBe(true);
+    let checkCat = getStoredServiceCategories().find((c) => c.id === createdCat.id);
+    expect(checkCat?.active).toBe(false);
+
+    const reactOk = reactivateServiceCategory(createdCat.id);
+    expect(reactOk).toBe(true);
+    checkCat = getStoredServiceCategories().find((c) => c.id === createdCat.id);
+    expect(checkCat?.active).toBe(true);
+
+    // 5. Delete category if not in use
+    expect(isCategoryInUse(createdCat.id)).toBe(false);
+    const delResult = deleteServiceCategory(createdCat.id);
+    expect(delResult.success).toBe(true);
+    expect(getStoredServiceCategories().some((c) => c.id === createdCat.id)).toBe(false);
+
+    // 6. Attempting to delete a category that IS in use (e.g. cat_diag_01) should fail gracefully
+    const inUseDelete = deleteServiceCategory('cat_diag_01');
+    expect(inUseDelete.success).toBe(false);
+    expect(inUseDelete.error).toBeDefined();
   });
 });

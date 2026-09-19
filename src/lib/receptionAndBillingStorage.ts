@@ -26,10 +26,28 @@ import {
   ExcelRowValidation,
   ExcelImportResult,
   PricingResolutionResult,
+  Invoice,
+  InvoiceItem,
+  InvoiceStatus,
+  InvoicePatientType,
+  PaymentMethod,
+  InvoicePaymentRecord,
+  CommissionBaseType,
+  DoctorCommissionRule,
+  CostType,
+  LabMaterialCostRecord,
+  FinancialBreakdown,
+  ImplantComponentType,
+  ImplantComponentItem,
+  ImplantCaseRecord,
+  ImplantFinancialBreakdown,
+  Supplier,
+  SupplierType,
 } from '../types/receptionAndBilling';
 import { Patient, RoleKey } from '../types';
-import { DEFAULT_EGYPT_ORG } from './storage';
+import { DEFAULT_EGYPT_ORG, getStoredStaffUsers } from './storage';
 import { getStoredPatients, setStoredPatients } from './patientStorage';
+import { createNotification } from './notificationStorage';
 
 export const RECEPTION_STORAGE_KEYS = {
   SERVICE_CATEGORIES: 'dental_saas_service_categories',
@@ -47,6 +65,11 @@ export const RECEPTION_STORAGE_KEYS = {
   INSURANCE_CARD_TEMPLATES: 'dental_saas_insurance_card_templates',
   INSURANCE_CARD_FIELDS: 'dental_saas_insurance_card_fields',
   CUSTOM_PATIENT_SERVICES: 'dental_saas_custom_patient_services',
+  INVOICES: 'dental_saas_invoices',
+  DOCTOR_COMMISSION_RULES: 'dental_saas_doctor_commission_rules',
+  LAB_MATERIAL_COSTS: 'dental_saas_lab_material_costs',
+  IMPLANT_CASES: 'dental_saas_implant_cases',
+  SUPPLIERS: 'dental_saas_suppliers',
 };
 
 // Safe storage wrapper
@@ -97,6 +120,7 @@ export const SEED_SERVICE_CATEGORIES: ServiceCategory[] = [
     code: 'CAT-DIAG',
     name_ar: 'الفحص والتشخيص والأشعة',
     name_en: 'Examinations & Diagnostics',
+    description: 'الفحوصات الطبية السريرية والأشعة البانورامية والأشعة المقطعية ثلاثية الأبعاد',
     display_order: 1,
     active: true,
     created_at: '2026-01-01T08:00:00Z',
@@ -108,6 +132,7 @@ export const SEED_SERVICE_CATEGORIES: ServiceCategory[] = [
     code: 'CAT-PREV',
     name_ar: 'الوقاية وتنظيف وتبييض الأسنان',
     name_en: 'Preventive & Hygiene',
+    description: 'إزالة الجير وتلميع الأسنان وعلاجات الفلورايد وتبييض الأسنان بالليزر',
     display_order: 2,
     active: true,
     created_at: '2026-01-01T08:00:00Z',
@@ -119,6 +144,7 @@ export const SEED_SERVICE_CATEGORIES: ServiceCategory[] = [
     code: 'CAT-PEDO',
     name_ar: 'طب أسنان الأطفال',
     name_en: 'Pediatric Dentistry',
+    description: 'علاجات أسنان الأطفال وتطبيق حافظ المسافة وحشوات الأسنان اللبنية',
     display_order: 3,
     active: true,
     created_at: '2026-01-01T08:00:00Z',
@@ -130,6 +156,7 @@ export const SEED_SERVICE_CATEGORIES: ServiceCategory[] = [
     code: 'CAT-REST',
     name_ar: 'الحشوات التجميلية والعلاجية',
     name_en: 'Restorative Dentistry',
+    description: 'الحشوات التجميلية الكومبوزيت والملغم وحشوات السيراميك والتجميل السني',
     display_order: 4,
     active: true,
     created_at: '2026-01-01T08:00:00Z',
@@ -141,6 +168,7 @@ export const SEED_SERVICE_CATEGORIES: ServiceCategory[] = [
     code: 'CAT-ENDO',
     name_ar: 'علاج الجذور والعصب',
     name_en: 'Endodontics',
+    description: 'علاج جذور الأسنان وحشو العصب واستئصال العصب للجذور المتعددة',
     display_order: 5,
     active: true,
     created_at: '2026-01-01T08:00:00Z',
@@ -152,6 +180,7 @@ export const SEED_SERVICE_CATEGORIES: ServiceCategory[] = [
     code: 'CAT-SURG',
     name_ar: 'جراحة الفم والخلع البسيط والجراحي',
     name_en: 'Oral Surgery & Extractions',
+    description: 'خلع الأسنان البسيط والجراحي وخلع ضرس العقل المطمور وزراعة الأسنان',
     display_order: 6,
     active: true,
     created_at: '2026-01-01T08:00:00Z',
@@ -163,6 +192,7 @@ export const SEED_SERVICE_CATEGORIES: ServiceCategory[] = [
     code: 'CAT-ORTHO',
     name_ar: 'تقويم الأسنان والفكين',
     name_en: 'Orthodontics',
+    description: 'التقويم المعدني والشفاف والمتحرك وعلاج تراكب وإعوجاج الأسنان',
     display_order: 7,
     active: true,
     created_at: '2026-01-01T08:00:00Z',
@@ -174,6 +204,7 @@ export const SEED_SERVICE_CATEGORIES: ServiceCategory[] = [
     code: 'CAT-PROS',
     name_ar: 'التركيبات الثابتة والمتحركة والزركونيا',
     name_en: 'Prosthodontics & Crowns',
+    description: 'تيجان وجسور الزركونيا والبورسلين والأطقم المتحركة الجزئية والكاملة',
     display_order: 8,
     active: true,
     created_at: '2026-01-01T08:00:00Z',
@@ -917,9 +948,13 @@ export const SEED_CUSTOM_SERVICES: CustomPatientService[] = [
 // 6. STORAGE ACCESSORS & RESET ENGINE
 // ============================================================================
 
-export function getStoredCategories(): ServiceCategory[] {
+export function getStoredCategories(orgId?: string): ServiceCategory[] {
   const raw = safeStorage.getItem(RECEPTION_STORAGE_KEYS.SERVICE_CATEGORIES);
-  return raw ? JSON.parse(raw) : SEED_SERVICE_CATEGORIES;
+  const categories: ServiceCategory[] = raw ? JSON.parse(raw) : SEED_SERVICE_CATEGORIES;
+  if (orgId) {
+    return categories.filter((c) => c.organization_id === orgId);
+  }
+  return categories;
 }
 
 export function setStoredCategories(items: ServiceCategory[]): void {
@@ -927,8 +962,13 @@ export function setStoredCategories(items: ServiceCategory[]): void {
 }
 
 export function getStoredServices(): DentalService[] {
-  const raw = safeStorage.getItem(RECEPTION_STORAGE_KEYS.SERVICES);
-  return raw ? JSON.parse(raw) : SEED_SERVICES;
+  try {
+    const raw = safeStorage.getItem(RECEPTION_STORAGE_KEYS.SERVICES);
+    const parsed = raw ? JSON.parse(raw) : null;
+    return Array.isArray(parsed) ? parsed : SEED_SERVICES;
+  } catch {
+    return SEED_SERVICES;
+  }
 }
 
 export function setStoredServices(items: DentalService[]): void {
@@ -990,8 +1030,13 @@ export function setStoredPriceListItems(items: PriceListItem[]): void {
 }
 
 export function getStoredInsuranceCompanies(): InsuranceCompany[] {
-  const raw = safeStorage.getItem(RECEPTION_STORAGE_KEYS.INSURANCE_COMPANIES);
-  return raw ? JSON.parse(raw) : SEED_INSURANCE_COMPANIES;
+  try {
+    const raw = safeStorage.getItem(RECEPTION_STORAGE_KEYS.INSURANCE_COMPANIES);
+    const parsed = raw ? JSON.parse(raw) : null;
+    return Array.isArray(parsed) ? parsed : SEED_INSURANCE_COMPANIES;
+  } catch {
+    return SEED_INSURANCE_COMPANIES;
+  }
 }
 
 export function setStoredInsuranceCompanies(items: InsuranceCompany[]): void {
@@ -999,8 +1044,13 @@ export function setStoredInsuranceCompanies(items: InsuranceCompany[]): void {
 }
 
 export function getStoredInsurancePlans(): InsurancePlan[] {
-  const raw = safeStorage.getItem(RECEPTION_STORAGE_KEYS.INSURANCE_PLANS);
-  return raw ? JSON.parse(raw) : SEED_INSURANCE_PLANS;
+  try {
+    const raw = safeStorage.getItem(RECEPTION_STORAGE_KEYS.INSURANCE_PLANS);
+    const parsed = raw ? JSON.parse(raw) : null;
+    return Array.isArray(parsed) ? parsed : SEED_INSURANCE_PLANS;
+  } catch {
+    return SEED_INSURANCE_PLANS;
+  }
 }
 
 export function setStoredInsurancePlans(items: InsurancePlan[]): void {
@@ -1008,8 +1058,13 @@ export function setStoredInsurancePlans(items: InsurancePlan[]): void {
 }
 
 export function getStoredInsurancePriceLists(): InsurancePriceList[] {
-  const raw = safeStorage.getItem(RECEPTION_STORAGE_KEYS.INSURANCE_PRICE_LISTS);
-  return raw ? JSON.parse(raw) : SEED_INSURANCE_PRICE_LISTS;
+  try {
+    const raw = safeStorage.getItem(RECEPTION_STORAGE_KEYS.INSURANCE_PRICE_LISTS);
+    const parsed = raw ? JSON.parse(raw) : null;
+    return Array.isArray(parsed) ? parsed : SEED_INSURANCE_PRICE_LISTS;
+  } catch {
+    return SEED_INSURANCE_PRICE_LISTS;
+  }
 }
 
 export function setStoredInsurancePriceLists(items: InsurancePriceList[]): void {
@@ -1017,8 +1072,13 @@ export function setStoredInsurancePriceLists(items: InsurancePriceList[]): void 
 }
 
 export function getStoredInsurancePriceListItems(): InsurancePriceListItem[] {
-  const raw = safeStorage.getItem(RECEPTION_STORAGE_KEYS.INSURANCE_PRICE_LIST_ITEMS);
-  return raw ? JSON.parse(raw) : SEED_INSURANCE_PRICE_LIST_ITEMS;
+  try {
+    const raw = safeStorage.getItem(RECEPTION_STORAGE_KEYS.INSURANCE_PRICE_LIST_ITEMS);
+    const parsed = raw ? JSON.parse(raw) : null;
+    return Array.isArray(parsed) ? parsed : SEED_INSURANCE_PRICE_LIST_ITEMS;
+  } catch {
+    return SEED_INSURANCE_PRICE_LIST_ITEMS;
+  }
 }
 
 export function setStoredInsurancePriceListItems(items: InsurancePriceListItem[]): void {
@@ -1026,8 +1086,13 @@ export function setStoredInsurancePriceListItems(items: InsurancePriceListItem[]
 }
 
 export function getStoredInsuranceCardTemplates(): InsuranceCardTemplate[] {
-  const raw = safeStorage.getItem(RECEPTION_STORAGE_KEYS.INSURANCE_CARD_TEMPLATES);
-  return raw ? JSON.parse(raw) : SEED_INSURANCE_CARD_TEMPLATES;
+  try {
+    const raw = safeStorage.getItem(RECEPTION_STORAGE_KEYS.INSURANCE_CARD_TEMPLATES);
+    const parsed = raw ? JSON.parse(raw) : null;
+    return Array.isArray(parsed) ? parsed : SEED_INSURANCE_CARD_TEMPLATES;
+  } catch {
+    return SEED_INSURANCE_CARD_TEMPLATES;
+  }
 }
 
 export function setStoredInsuranceCardTemplates(items: InsuranceCardTemplate[]): void {
@@ -1035,8 +1100,13 @@ export function setStoredInsuranceCardTemplates(items: InsuranceCardTemplate[]):
 }
 
 export function getStoredInsuranceCardFields(): InsuranceCardField[] {
-  const raw = safeStorage.getItem(RECEPTION_STORAGE_KEYS.INSURANCE_CARD_FIELDS);
-  return raw ? JSON.parse(raw) : SEED_INSURANCE_CARD_FIELDS;
+  try {
+    const raw = safeStorage.getItem(RECEPTION_STORAGE_KEYS.INSURANCE_CARD_FIELDS);
+    const parsed = raw ? JSON.parse(raw) : null;
+    return Array.isArray(parsed) ? parsed : SEED_INSURANCE_CARD_FIELDS;
+  } catch {
+    return SEED_INSURANCE_CARD_FIELDS;
+  }
 }
 
 export function setStoredInsuranceCardFields(items: InsuranceCardField[]): void {
@@ -1376,6 +1446,41 @@ export function bookAppointment(params: {
   appointments.push(newApt);
   setStoredAppointments(appointments);
 
+  // Emit Appointment Notifications
+  try {
+    // 1. To Patient
+    createNotification({
+      organization_id: newApt.organization_id,
+      branch_id: newApt.branch_id,
+      recipient_type: 'patient',
+      recipient_id: newApt.patient_id,
+      type: 'appointment_event',
+      title_ar: 'تأكيد حجز موعد جديد',
+      title_en: 'Appointment Confirmed',
+      message_ar: `تم حجز موعد جديد بتاريخ ${newApt.appointment_date} الساعة ${newApt.start_time}.`,
+      message_en: `New appointment scheduled for ${newApt.appointment_date} at ${newApt.start_time}.`,
+      related_entity_type: 'appointment',
+      related_entity_id: newApt.id,
+    });
+
+    // 2. To Doctor
+    createNotification({
+      organization_id: newApt.organization_id,
+      branch_id: newApt.branch_id,
+      recipient_type: 'staff',
+      recipient_id: newApt.doctor_id,
+      type: 'appointment_event',
+      title_ar: 'موعد كشف جديد بالجدول',
+      title_en: 'New Appointment Booked',
+      message_ar: `تم تسجيل حجز جديد بمواعيد الكشف بتاريخ ${newApt.appointment_date} الساعة ${newApt.start_time}.`,
+      message_en: `New appointment added to schedule for ${newApt.appointment_date} at ${newApt.start_time}.`,
+      related_entity_type: 'appointment',
+      related_entity_id: newApt.id,
+    });
+  } catch {
+    // ignore
+  }
+
   return { success: true, appointment: newApt };
 }
 
@@ -1588,6 +1693,8 @@ export function resolvePricing(params: {
   };
 }
 
+export const calculateServicePriceAndInsurance = resolvePricing;
+
 /**
  * 9. Excel Price List Row Validation
  * Validates:
@@ -1796,6 +1903,100 @@ export function publishNewPriceListVersion(params: {
 }
 
 /**
+ * Publish New Insurance Price List Version
+ */
+export function publishNewInsurancePriceListVersion(params: {
+  organizationId?: string;
+  companyId: string;
+  planId?: string;
+  name?: string;
+  validRows: ExcelRowValidation[];
+  actorUserId?: string;
+  notes?: string;
+  effectiveFrom?: string;
+}): { success: boolean; priceList?: InsurancePriceList; itemsCount: number } {
+  const organizationId = params.organizationId || 'org_dental_egy_01';
+  const companyId = params.companyId;
+  const planId = params.planId;
+  const validRows = params.validRows || [];
+
+  const priceLists = getStoredInsurancePriceLists();
+  let priceList = priceLists.find(
+    (pl) => pl.company_id === companyId && (planId ? pl.plan_id === planId : true)
+  );
+
+  if (!priceList) {
+    priceList = {
+      id: `ipl_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      organization_id: organizationId,
+      company_id: companyId,
+      plan_id: planId,
+      name: params.name || 'قائمة أسعار تأمين جديدة',
+      active: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    priceLists.push(priceList);
+    setStoredInsurancePriceLists(priceLists);
+  }
+
+  const items = getStoredInsurancePriceListItems();
+  const services = getStoredServices();
+
+  validRows.forEach((vr) => {
+    let srv = services.find(
+      (s) => s.code.toUpperCase() === vr.service_code.toUpperCase() && s.organization_id === organizationId
+    );
+    if (!srv) {
+      srv = {
+        id: `srv_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        organization_id: organizationId,
+        code: vr.service_code,
+        name_ar: vr.service_name_ar,
+        name_en: vr.service_name_en,
+        category: vr.category,
+        default_duration_minutes: 30,
+        requires_approval: false,
+        requires_doctor: true,
+        active: vr.active,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      services.push(srv);
+    }
+
+    const existingIndex = items.findIndex(
+      (i) => i.insurance_price_list_id === priceList!.id && i.service_id === srv!.id
+    );
+
+    const newItem: InsurancePriceListItem = {
+      id: existingIndex >= 0 ? items[existingIndex].id : `ipli_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      insurance_price_list_id: priceList!.id,
+      organization_id: organizationId,
+      service_id: srv.id,
+      service_code: vr.service_code,
+      insurance_price: vr.cash_price,
+      coverage_percentage: (vr as any).coverage_percentage || 80,
+      patient_copay_percentage: (vr as any).patient_copay_percentage || 20,
+      requires_approval: (vr as any).requires_approval || false,
+      active: vr.active,
+      created_at: new Date().toISOString(),
+    };
+
+    if (existingIndex >= 0) {
+      items[existingIndex] = newItem;
+    } else {
+      items.push(newItem);
+    }
+  });
+
+  setStoredServices(services);
+  setStoredInsurancePriceListItems(items);
+
+  return { success: true, priceList, itemsCount: validRows.length };
+}
+
+/**
  * 11. Custom Patient Service Creation & Review
  */
 export function addCustomPatientService(params: {
@@ -1907,7 +2108,7 @@ export function isCategoryInUse(categoryId: string): boolean {
   return services.some((s) => s.category_id === categoryId);
 }
 
-export function saveServiceCategory(category: Partial<ServiceCategory> & { id?: string; organization_id?: string }): ServiceCategory {
+export function saveServiceCategory(category: Partial<ServiceCategory> & { id?: string; organization_id?: string; description?: string }): ServiceCategory {
   const categories = getStoredCategories();
   const id = category.id || `cat_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
   const index = categories.findIndex((c) => c.id === id);
@@ -1918,6 +2119,7 @@ export function saveServiceCategory(category: Partial<ServiceCategory> & { id?: 
     code: (category.code || `CAT-${Date.now().toString().slice(-4)}`).trim().toUpperCase(),
     name_ar: (category.name_ar || 'تصنيف جديد').trim(),
     name_en: (category.name_en || 'New Category').trim(),
+    description: category.description !== undefined ? category.description.trim() : undefined,
     display_order: category.display_order ?? (categories.length + 1),
     active: category.active !== undefined ? category.active : true,
     created_at: category.created_at || new Date().toISOString(),
@@ -2009,7 +2211,16 @@ export function saveDoctorShift(shift: Partial<DoctorShift> & { id?: string; org
   return normalized;
 }
 
-export function saveService(service: Partial<DentalService> & { id?: string; organization_id?: string }): DentalService {
+export function saveService(
+  service: Partial<DentalService> & { id?: string; organization_id?: string },
+  actorUserId?: string,
+  actorRole?: string
+): DentalService {
+  // Authorization Guard: Only Center Manager and Branch Manager can modify services
+  if (actorRole && !['center_manager', 'branch_manager'].includes(actorRole)) {
+    throw new Error('غير مصرح لك بتعديل أو إضافة الخدمات الطبية. هذه الخاصية متاحة لمدير المركز أو مدير الفرع فقط.');
+  }
+
   const services = getStoredServices();
   const id = service.id || `srv_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
   const index = services.findIndex((s) => s.id === id);
@@ -2023,6 +2234,16 @@ export function saveService(service: Partial<DentalService> & { id?: string; org
     }
   }
 
+  // Lookup supplier name if supplier_id is provided
+  let supplierName = service.default_supplier_name;
+  if (service.default_supplier_id) {
+    const suppliers = getStoredSuppliers();
+    const sup = suppliers.find((s) => s.id === service.default_supplier_id);
+    if (sup) {
+      supplierName = sup.name_ar || sup.name_en;
+    }
+  }
+
   const normalized: DentalService = {
     id,
     organization_id: service.organization_id || DEFAULT_EGYPT_ORG.id,
@@ -2030,15 +2251,18 @@ export function saveService(service: Partial<DentalService> & { id?: string; org
     code: (service.code || `SRV-${Date.now().toString().slice(-4)}`).trim().toUpperCase(),
     name_ar: (service.name_ar || 'خدمة جديدة').trim(),
     name_en: (service.name_en || 'New Service').trim(),
+    description: service.description?.trim() || undefined,
     category: service.category || 'عام',
     default_duration_minutes: service.default_duration_minutes || service.duration_minutes || 30,
     duration_minutes: service.default_duration_minutes || service.duration_minutes || 30,
     requires_approval: service.requires_approval ?? false,
     requires_doctor: service.requires_doctor ?? true,
+    default_supplier_id: service.default_supplier_id || undefined,
+    default_supplier_name: supplierName || undefined,
     active: service.active !== undefined ? service.active : (service.is_active ?? true),
     is_active: service.active !== undefined ? service.active : (service.is_active ?? true),
     notes: service.notes,
-    created_at: service.created_at || new Date().toISOString(),
+    created_at: index >= 0 ? services[index].created_at : (service.created_at || new Date().toISOString()),
     updated_at: new Date().toISOString(),
   };
 
@@ -2051,7 +2275,10 @@ export function saveService(service: Partial<DentalService> & { id?: string; org
   return normalized;
 }
 
-export function deactivateService(serviceId: string): boolean {
+export function deactivateService(serviceId: string, actorUserId?: string, actorRole?: string): boolean {
+  if (actorRole && !['center_manager', 'branch_manager'].includes(actorRole)) {
+    return false;
+  }
   const services = getStoredServices();
   const srv = services.find((s) => s.id === serviceId);
   if (!srv) return false;
@@ -2062,7 +2289,10 @@ export function deactivateService(serviceId: string): boolean {
   return true;
 }
 
-export function reactivateService(serviceId: string): boolean {
+export function reactivateService(serviceId: string, actorUserId?: string, actorRole?: string): boolean {
+  if (actorRole && !['center_manager', 'branch_manager'].includes(actorRole)) {
+    return false;
+  }
   const services = getStoredServices();
   const srv = services.find((s) => s.id === serviceId);
   if (!srv) return false;
@@ -2143,5 +2373,1289 @@ export function updateWaitingListStatus(
   setStoredWaitingList(list);
   return true;
 }
+
+// ============================================================================
+// INVOICES & INVOICE ITEMS STORAGE ENGINE
+// ============================================================================
+
+export const SEED_INVOICES: Invoice[] = [
+  {
+    id: 'inv_2026_001',
+    invoice_number: 'INV-20260917-001',
+    organization_id: DEFAULT_EGYPT_ORG.id,
+    branch_id: '11111111-1111-1111-1111-111111111111',
+    patient_id: 'a1111111-1111-1111-1111-111111111111',
+    patient_name: 'أحمد محمد السيد',
+    patient_code: 'PAT-000001',
+    doctor_id: 'prof_doc_01',
+    doctor_name: 'د. كريم حسن',
+    patient_type: 'cash',
+    subtotal_amount: 1000.0,
+    insurance_total_amount: 0.0,
+    patient_total_amount: 1000.0,
+    discount_total_amount: 0.0,
+    tax_total_amount: 0.0,
+    final_payable_amount: 1000.0,
+    paid_amount: 1000.0,
+    remaining_balance: 0.0,
+    status: 'paid',
+    currency: 'EGP',
+    notes: 'فاتورة حشو كومبوزيت تجميل وتنظيف جير - مدفوعة بالكامل',
+    created_at: '2026-09-17T09:00:00Z',
+    updated_at: '2026-09-17T09:05:00Z',
+    paid_at: '2026-09-17T09:05:00Z',
+    items: [
+      {
+        id: 'inv_item_001',
+        invoice_id: 'inv_2026_001',
+        organization_id: DEFAULT_EGYPT_ORG.id,
+        service_id: 'srv_003',
+        service_code: 'SRV-PREV-01',
+        service_name_ar: 'إزالة الجير وتلميع الأسنان',
+        service_name_en: 'Scaling & Polishing',
+        quantity: 1,
+        unit_price: 350.0,
+        gross_amount: 350.0,
+        insurance_percentage: 0,
+        insurance_amount: 0.0,
+        patient_copay_percentage: 100,
+        patient_copay_amount: 350.0,
+        final_payable_amount: 350.0,
+        approval_status: 'cash',
+        created_at: '2026-09-17T09:00:00Z',
+      },
+      {
+        id: 'inv_item_002',
+        invoice_id: 'inv_2026_001',
+        organization_id: DEFAULT_EGYPT_ORG.id,
+        service_id: 'srv_004',
+        service_code: 'SRV-REST-01',
+        service_name_ar: 'حشو كومبوزيت ضوئي تجميل',
+        service_name_en: 'Composite Restorative Filling',
+        quantity: 1,
+        unit_price: 650.0,
+        gross_amount: 650.0,
+        insurance_percentage: 0,
+        insurance_amount: 0.0,
+        patient_copay_percentage: 100,
+        patient_copay_amount: 650.0,
+        final_payable_amount: 650.0,
+        approval_status: 'cash',
+        created_at: '2026-09-17T09:00:00Z',
+      },
+    ],
+  },
+  {
+    id: 'inv_2026_002',
+    invoice_number: 'INV-20260917-002',
+    organization_id: DEFAULT_EGYPT_ORG.id,
+    branch_id: '11111111-1111-1111-1111-111111111111',
+    patient_id: 'c3333333-3333-3333-3333-333333333333',
+    patient_name: 'سارة محمود علي',
+    patient_code: 'PAT-000003',
+    doctor_id: 'prof_doc_01',
+    doctor_name: 'د. كريم حسن',
+    patient_type: 'insured',
+    insurance_company_id: 'ins_comp_axa',
+    insurance_company_name: 'شركة أكسا للتأمين مصر',
+    insurance_plan_name: 'الخطة الماسية 80/20',
+    policy_number: 'AXA-EGY-99201',
+    subtotal_amount: 1200.0,
+    insurance_total_amount: 960.0,
+    patient_total_amount: 240.0,
+    discount_total_amount: 0.0,
+    tax_total_amount: 0.0,
+    final_payable_amount: 240.0,
+    paid_amount: 100.0,
+    remaining_balance: 140.0,
+    status: 'partially_paid',
+    currency: 'EGP',
+    notes: 'علاج عصب جذر واحد وتغطية تأمينية أكسا 80%',
+    created_at: '2026-09-17T10:00:00Z',
+    updated_at: '2026-09-17T10:15:00Z',
+    items: [
+      {
+        id: 'inv_item_003',
+        invoice_id: 'inv_2026_002',
+        organization_id: DEFAULT_EGYPT_ORG.id,
+        service_id: 'srv_005',
+        service_code: 'SRV-ENDO-01',
+        service_name_ar: 'علاج جذور أسنان (قناة واحدة)',
+        service_name_en: 'Root Canal Treatment (Single Canal)',
+        quantity: 1,
+        unit_price: 1200.0,
+        gross_amount: 1200.0,
+        insurance_percentage: 80,
+        insurance_amount: 960.0,
+        patient_copay_percentage: 20,
+        patient_copay_amount: 240.0,
+        final_payable_amount: 240.0,
+        approval_status: 'approved',
+        created_at: '2026-09-17T10:00:00Z',
+      },
+    ],
+  },
+];
+
+export function getStoredInvoices(orgId?: string, branchId?: string): Invoice[] {
+  try {
+    const raw = safeStorage.getItem(RECEPTION_STORAGE_KEYS.INVOICES);
+    let invoices: Invoice[] = raw ? JSON.parse(raw) : SEED_INVOICES;
+    if (!Array.isArray(invoices) || invoices.length === 0) {
+      invoices = SEED_INVOICES;
+    }
+    if (orgId) {
+      invoices = invoices.filter((inv) => inv.organization_id === orgId);
+    }
+    if (branchId) {
+      invoices = invoices.filter((inv) => inv.branch_id === branchId);
+    }
+    return invoices;
+  } catch {
+    return SEED_INVOICES;
+  }
+}
+
+export function setStoredInvoices(items: Invoice[]): void {
+  safeStorage.setItem(RECEPTION_STORAGE_KEYS.INVOICES, JSON.stringify(items));
+}
+
+export function getInvoiceById(id: string, orgId?: string): Invoice | undefined {
+  const invoices = getStoredInvoices(orgId);
+  return invoices.find((i) => i.id === id);
+}
+
+export function getInvoicesForPatient(patientId: string, orgId?: string): Invoice[] {
+  const invoices = getStoredInvoices(orgId);
+  return invoices.filter((i) => i.patient_id === patientId);
+}
+
+export function createInvoice(params: {
+  organizationId?: string;
+  organization_id?: string;
+  branchId?: string;
+  branch_id?: string;
+  patientId: string;
+  patient_id?: string;
+  doctorId?: string;
+  doctor_id?: string;
+  appointmentId?: string;
+  appointment_id?: string;
+  treatmentPlanId?: string;
+  treatment_plan_id?: string;
+  patientType?: InvoicePatientType;
+  insuranceCompanyId?: string;
+  insuranceCompanyName?: string;
+  insurancePlanName?: string;
+  policyNumber?: string;
+  discountTotalAmount?: number;
+  taxTotalAmount?: number;
+  notes?: string;
+  currency?: string;
+  actorUserId?: string;
+  initialPaidAmount?: number;
+  items: Array<{
+    serviceId: string;
+    quantity?: number;
+    customUnitPrice?: number;
+    customInsuranceAmount?: number;
+    customCopayAmount?: number;
+    approvalStatus?: 'approved' | 'pending' | 'rejected' | 'cash' | 'direct_coverage';
+    doctorId?: string;
+    doctorName?: string;
+    commissionPercentage?: number;
+    commissionBase?: CommissionBaseType;
+    labCost?: number;
+    materialCost?: number;
+    supplierVendor?: string;
+  }>;
+}): Invoice {
+  const orgId = params.organizationId || params.organization_id || DEFAULT_EGYPT_ORG.id;
+  const brId = params.branchId || params.branch_id || '11111111-1111-1111-1111-111111111111';
+  const patId = params.patientId || params.patient_id || '';
+
+  const patients = getStoredPatients();
+  const patient = patients.find((p) => p.id === patId);
+  const patientName = patient ? `${patient.first_name} ${patient.last_name}`.trim() : 'Patient';
+  const patientCode = patient?.patient_code || 'PAT-000000';
+
+  const staff = getStoredStaffUsers();
+  const docId = params.doctorId || params.doctor_id;
+  const doctor = docId ? staff.find((s) => s.id === docId) : undefined;
+  const doctorName = doctor ? doctor.display_name : undefined;
+
+  const services = getStoredServices();
+  const allInvoices = getStoredInvoices();
+
+  const invoiceNumber = `INV-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${String(allInvoices.length + 1).padStart(3, '0')}`;
+  const invoiceId = `inv_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+
+  let subtotal = 0;
+  let insuranceTotal = 0;
+  let patientTotal = 0;
+  let totalLabCost = 0;
+  let totalMaterialCost = 0;
+  let totalDoctorCommission = 0;
+
+  const invoiceItems: InvoiceItem[] = (params.items || []).map((it, idx) => {
+    const srv = services.find((s) => s.id === it.serviceId);
+    const qty = it.quantity && it.quantity > 0 ? it.quantity : 1;
+
+    // Use EXISTING pricing resolution results engine
+    const resolved = resolvePricing({
+      organizationId: orgId,
+      patientId: patId,
+      serviceId: it.serviceId,
+      patientInsuranceCompanyId: params.insuranceCompanyId || patient?.insurance_company,
+    });
+
+    const unitPrice = typeof it.customUnitPrice === 'number' ? it.customUnitPrice : resolved.total_price;
+    const grossAmount = unitPrice * qty;
+
+    const insurancePct = resolved.coverage_percentage;
+    const insuranceAmt = typeof it.customInsuranceAmount === 'number'
+      ? it.customInsuranceAmount
+      : resolved.insurance_coverage * qty;
+
+    const copayPct = resolved.copay_percentage;
+    const copayAmt = typeof it.customCopayAmount === 'number'
+      ? it.customCopayAmount
+      : resolved.patient_copay * qty;
+
+    const finalPayable = copayAmt;
+
+    subtotal += grossAmount;
+    insuranceTotal += insuranceAmt;
+    patientTotal += copayAmt;
+
+    const appStatus = it.approvalStatus || (resolved.requires_approval ? 'pending' : (resolved.price_type === 'cash' ? 'cash' : 'approved'));
+
+    // Phase 7.3 Doctor Commission & Cost Calculations
+    const itemLabCost = typeof it.labCost === 'number' ? it.labCost : 0;
+    const itemMaterialCost = typeof it.materialCost === 'number' ? it.materialCost : 0;
+    const itemVendor = it.supplierVendor;
+
+    const itemDoctorId = it.doctorId || docId;
+    const itemDoctorName = it.doctorName || doctorName;
+
+    const rule = getCommissionRuleForDoctorAndService(orgId, itemDoctorId, it.serviceId);
+    const commPct = typeof it.commissionPercentage === 'number' ? it.commissionPercentage : rule.commission_percentage;
+    const commBase = it.commissionBase || rule.commission_base;
+
+    const breakdown = calculateFinancialBreakdown({
+      grossServiceAmount: grossAmount,
+      insuranceAmount: insuranceAmt,
+      patientAmount: copayAmt,
+      labCost: itemLabCost,
+      materialCost: itemMaterialCost,
+      commissionPercentage: commPct,
+      commissionBase: commBase,
+    });
+
+    totalLabCost += breakdown.lab_cost;
+    totalMaterialCost += breakdown.material_cost;
+    totalDoctorCommission += breakdown.doctor_commission;
+
+    return {
+      id: `inv_item_${Date.now()}_${idx}`,
+      invoice_id: invoiceId,
+      organization_id: orgId,
+      service_id: it.serviceId,
+      service_code: srv?.code || 'SRV-GEN',
+      service_name_ar: srv?.name_ar || 'خدمة علاجية',
+      service_name_en: srv?.name_en || 'Dental Treatment Service',
+      quantity: qty,
+      unit_price: Math.round(unitPrice * 100) / 100,
+      gross_amount: Math.round(grossAmount * 100) / 100,
+      insurance_percentage: insurancePct,
+      insurance_amount: Math.round(insuranceAmt * 100) / 100,
+      patient_copay_percentage: copayPct,
+      patient_copay_amount: Math.round(copayAmt * 100) / 100,
+      final_payable_amount: Math.round(finalPayable * 100) / 100,
+      approval_status: appStatus,
+      created_at: new Date().toISOString(),
+      doctor_id: itemDoctorId,
+      doctor_name: itemDoctorName,
+      commission_percentage: commPct,
+      commission_base: commBase,
+      calculated_commission: breakdown.doctor_commission,
+      lab_cost: breakdown.lab_cost,
+      material_cost: breakdown.material_cost,
+      supplier_vendor: itemVendor,
+      clinic_net_amount: breakdown.clinic_net_amount,
+    };
+  });
+
+  const discount = params.discountTotalAmount || 0;
+  const tax = params.taxTotalAmount || 0;
+  const finalPayable = Math.max(0, patientTotal - discount + tax);
+  const initialPaid = params.initialPaidAmount || 0;
+  const remaining = Math.max(0, finalPayable - initialPaid);
+
+  let status: InvoiceStatus = 'unpaid';
+  if (remaining === 0 && finalPayable >= 0) {
+    status = 'paid';
+  } else if (initialPaid > 0) {
+    status = 'partially_paid';
+  }
+
+  const patientType: InvoicePatientType = params.patientType || (params.insuranceCompanyId || patient?.insurance_company ? 'insured' : 'cash');
+
+  const newInvoice: Invoice = {
+    id: invoiceId,
+    invoice_number: invoiceNumber,
+    organization_id: orgId,
+    branch_id: brId,
+    patient_id: patId,
+    patient_name: patientName,
+    patient_code: patientCode,
+    doctor_id: docId,
+    doctor_name: doctorName,
+    appointment_id: params.appointmentId || params.appointment_id,
+    treatment_plan_id: params.treatmentPlanId || params.treatment_plan_id,
+    patient_type: patientType,
+    insurance_company_id: params.insuranceCompanyId,
+    insurance_company_name: params.insuranceCompanyName || patient?.insurance_company,
+    insurance_plan_name: params.insurancePlanName,
+    policy_number: params.policyNumber,
+    subtotal_amount: Math.round(subtotal * 100) / 100,
+    insurance_total_amount: Math.round(insuranceTotal * 100) / 100,
+    patient_total_amount: Math.round(patientTotal * 100) / 100,
+    discount_total_amount: Math.round(discount * 100) / 100,
+    tax_total_amount: Math.round(tax * 100) / 100,
+    final_payable_amount: Math.round(finalPayable * 100) / 100,
+    paid_amount: Math.round(initialPaid * 100) / 100,
+    remaining_balance: Math.round(remaining * 100) / 100,
+    status,
+    currency: params.currency || 'EGP',
+    notes: params.notes,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    paid_at: status === 'paid' ? new Date().toISOString() : undefined,
+    created_by: params.actorUserId,
+    items: invoiceItems,
+    total_lab_cost: Math.round(totalLabCost * 100) / 100,
+    total_material_cost: Math.round(totalMaterialCost * 100) / 100,
+    total_doctor_commission: Math.round(totalDoctorCommission * 100) / 100,
+    clinic_net_amount: Math.round((finalPayable - totalLabCost - totalMaterialCost - totalDoctorCommission) * 100) / 100,
+  };
+
+  allInvoices.unshift(newInvoice);
+  setStoredInvoices(allInvoices);
+  return newInvoice;
+}
+
+export function recordInvoicePayment(
+  invoiceId: string,
+  paymentAmount: number,
+  optionsOrActor?:
+    | string
+    | {
+        actorUserId?: string;
+        paymentMethod?: PaymentMethod;
+        referenceNumber?: string;
+        receivedBy?: string;
+        receivedByName?: string;
+        notes?: string;
+      }
+): { success: boolean; invoice?: Invoice; payment?: InvoicePaymentRecord; error?: string } {
+  if (paymentAmount <= 0) {
+    return { success: false, error: 'مبلغ التحصيل يجب أن يكون أكبر من الصفر' };
+  }
+
+  const invoices = getStoredInvoices();
+  const inv = invoices.find((i) => i.id === invoiceId);
+  if (!inv) {
+    return { success: false, error: 'الفاتورة غير موجودة' };
+  }
+
+  if (inv.status === 'cancelled') {
+    return { success: false, error: 'لا يمكن تحصيل مبالغ لفاتورة ملغاة' };
+  }
+
+  const opts =
+    typeof optionsOrActor === 'string'
+      ? { actorUserId: optionsOrActor }
+      : optionsOrActor || {};
+
+  if (paymentAmount > inv.remaining_balance + 0.001) {
+    return {
+      success: false,
+      error: `مبلغ الدفع (${paymentAmount} ج.م) يتجاوز المبلغ المتبقي للفاتورة (${inv.remaining_balance} ج.م)`,
+    };
+  }
+
+  const newPaid = Math.min(inv.final_payable_amount, inv.paid_amount + paymentAmount);
+  const newRemaining = Math.max(0, inv.final_payable_amount - newPaid);
+
+  inv.paid_amount = Math.round(newPaid * 100) / 100;
+  inv.remaining_balance = Math.round(newRemaining * 100) / 100;
+
+  if (inv.remaining_balance === 0) {
+    inv.status = 'paid';
+    inv.paid_at = new Date().toISOString();
+  } else if (inv.paid_amount > 0) {
+    inv.status = 'partially_paid';
+  } else {
+    inv.status = 'unpaid';
+  }
+
+  const paymentRecord: InvoicePaymentRecord = {
+    id: `pay_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+    invoice_id: invoiceId,
+    organization_id: inv.organization_id,
+    branch_id: inv.branch_id,
+    amount: Math.round(paymentAmount * 100) / 100,
+    payment_method: opts.paymentMethod || 'cash',
+    reference_number: opts.referenceNumber,
+    received_by: opts.receivedBy || opts.actorUserId,
+    received_by_name: opts.receivedByName,
+    notes: opts.notes,
+    created_at: new Date().toISOString(),
+  };
+
+  if (!inv.payments) {
+    inv.payments = [];
+  }
+  inv.payments.push(paymentRecord);
+
+  inv.updated_at = new Date().toISOString();
+  setStoredInvoices(invoices);
+
+  // Emit Payment Notification for Patient
+  try {
+    createNotification({
+      organization_id: inv.organization_id,
+      branch_id: inv.branch_id,
+      recipient_type: 'patient',
+      recipient_id: inv.patient_id,
+      type: 'payment_invoice',
+      title_ar: 'تأكيد استلام دفعة مالية',
+      title_en: 'Payment Received',
+      message_ar: `تم سداد دفعة بقيمة ${paymentRecord.amount} ج.م للفاتورة رقم (${inv.invoice_number}). المتبقي: ${inv.remaining_balance} ج.م.`,
+      message_en: `Payment of ${paymentRecord.amount} EGP received for invoice (${inv.invoice_number}). Remaining: ${inv.remaining_balance} EGP.`,
+      related_entity_type: 'invoice',
+      related_entity_id: inv.id,
+    });
+  } catch {
+    // ignore
+  }
+
+  return { success: true, invoice: inv, payment: paymentRecord };
+}
+
+export function updateInvoiceStatus(invoiceId: string, status: InvoiceStatus): boolean {
+  const invoices = getStoredInvoices();
+  const inv = invoices.find((i) => i.id === invoiceId);
+  if (!inv) return false;
+
+  inv.status = status;
+  if (status === 'paid') {
+    inv.paid_amount = inv.final_payable_amount;
+    inv.remaining_balance = 0;
+    inv.paid_at = new Date().toISOString();
+  } else if (status === 'unpaid') {
+    inv.paid_amount = 0;
+    inv.remaining_balance = inv.final_payable_amount;
+  }
+  inv.updated_at = new Date().toISOString();
+  setStoredInvoices(invoices);
+  return true;
+}
+
+// ==========================================
+// PHASE 7.3 DOCTOR COMMISSION & LAB/MATERIAL COSTS
+// ==========================================
+
+export const SEED_DOCTOR_COMMISSION_RULES: DoctorCommissionRule[] = [
+  {
+    id: 'comm_rule_01',
+    organization_id: DEFAULT_EGYPT_ORG.id,
+    doctor_id: 'a1111111-2222-3333-4444-555555555555', // Dr. Ahmed Sameh
+    doctor_name: 'د. أحمد سامح (Dr. Ahmed Sameh)',
+    service_id: 'all',
+    service_name_ar: 'جميع الخدمات',
+    service_name_en: 'All Services',
+    commission_percentage: 20,
+    commission_base: 'gross',
+    active: true,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+  {
+    id: 'comm_rule_02',
+    organization_id: DEFAULT_EGYPT_ORG.id,
+    doctor_id: 'd2222222-2222-2222-2222-222222222222', // Dr. Sarah Mahmoud
+    doctor_name: 'د. سارة محمود (Dr. Sarah Mahmoud)',
+    service_id: 'srv_005', // Dental Implant Service
+    service_name_ar: 'زراعة أسنان - كوري تيتانيوم',
+    service_name_en: 'Korean Titanium Dental Implant',
+    commission_percentage: 25,
+    commission_base: 'net_after_costs',
+    active: true,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+  {
+    id: 'comm_rule_default',
+    organization_id: DEFAULT_EGYPT_ORG.id,
+    doctor_id: 'all',
+    doctor_name: 'جميع الأطباء (All Doctors)',
+    service_id: 'all',
+    service_name_ar: 'جميع الخدمات',
+    service_name_en: 'All Services',
+    commission_percentage: 15,
+    commission_base: 'gross',
+    active: true,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+];
+
+export const SEED_LAB_MATERIAL_COSTS: LabMaterialCostRecord[] = [
+  {
+    id: 'cost_001',
+    organization_id: DEFAULT_EGYPT_ORG.id,
+    type: 'lab',
+    supplier_vendor: 'معمل النيل للتركيبات - Nile Dental Lab',
+    item_name_ar: 'تاج زركونيا عالي النقاء',
+    item_name_en: 'Monolithic Zirconia Crown',
+    quantity: 1,
+    unit_cost: 350,
+    actual_cost: 350,
+    source_reference: 'LAB-ORD-2026-001',
+    service_id: 'srv_004',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+  {
+    id: 'cost_002',
+    organization_id: DEFAULT_EGYPT_ORG.id,
+    type: 'material',
+    supplier_vendor: 'مؤسسة الدلتا للمستلزمات الطبية - Delta Dental Supplies',
+    item_name_ar: 'طقم زرعة تيتانيوم وسقالة ألماني',
+    item_name_en: 'German Implant Kit & Abutment',
+    quantity: 1,
+    unit_cost: 250,
+    actual_cost: 250,
+    source_reference: 'PO-2026-88',
+    service_id: 'srv_005',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+];
+
+export function getStoredCommissionRules(organizationId?: string): DoctorCommissionRule[] {
+  const orgId = organizationId || DEFAULT_EGYPT_ORG.id;
+  const raw = safeStorage.getItem(RECEPTION_STORAGE_KEYS.DOCTOR_COMMISSION_RULES);
+  let list: DoctorCommissionRule[] = raw ? JSON.parse(raw) : [];
+  if (!raw || list.length === 0) {
+    list = SEED_DOCTOR_COMMISSION_RULES;
+    safeStorage.setItem(RECEPTION_STORAGE_KEYS.DOCTOR_COMMISSION_RULES, JSON.stringify(list));
+  }
+  return list.filter((r) => !orgId || r.organization_id === orgId);
+}
+
+export function setStoredCommissionRules(rules: DoctorCommissionRule[]): void {
+  safeStorage.setItem(RECEPTION_STORAGE_KEYS.DOCTOR_COMMISSION_RULES, JSON.stringify(rules));
+}
+
+export function getCommissionRuleForDoctorAndService(
+  organizationId: string,
+  doctorId?: string,
+  serviceId?: string
+): { commission_percentage: number; commission_base: CommissionBaseType; rule_id?: string } {
+  const rules = getStoredCommissionRules(organizationId).filter((r) => r.active);
+
+  // 1. Specific doctor & specific service
+  if (doctorId && serviceId) {
+    const rule = rules.find((r) => r.doctor_id === doctorId && r.service_id === serviceId);
+    if (rule) {
+      return { commission_percentage: rule.commission_percentage, commission_base: rule.commission_base, rule_id: rule.id };
+    }
+  }
+
+  // 2. Specific doctor & all services
+  if (doctorId) {
+    const rule = rules.find((r) => r.doctor_id === doctorId && (r.service_id === 'all' || !r.service_id));
+    if (rule) {
+      return { commission_percentage: rule.commission_percentage, commission_base: rule.commission_base, rule_id: rule.id };
+    }
+  }
+
+  // 3. All doctors & specific service
+  if (serviceId) {
+    const rule = rules.find((r) => (r.doctor_id === 'all' || !r.doctor_id) && r.service_id === serviceId);
+    if (rule) {
+      return { commission_percentage: rule.commission_percentage, commission_base: rule.commission_base, rule_id: rule.id };
+    }
+  }
+
+  // 4. Default global rule
+  const defaultRule = rules.find((r) => (r.doctor_id === 'all' || !r.doctor_id) && (r.service_id === 'all' || !r.service_id));
+  if (defaultRule) {
+    return { commission_percentage: defaultRule.commission_percentage, commission_base: defaultRule.commission_base, rule_id: defaultRule.id };
+  }
+
+  // Fallback
+  return { commission_percentage: 15, commission_base: 'gross' };
+}
+
+export function upsertCommissionRule(
+  ruleData: Partial<DoctorCommissionRule>,
+  actorUserId?: string,
+  actorRole?: RoleKey
+): { success: boolean; rule?: DoctorCommissionRule; error?: string } {
+  const allowedRoles: RoleKey[] = ['center_manager', 'branch_manager'];
+  if (actorRole && !allowedRoles.includes(actorRole)) {
+    return { success: false, error: 'غير مصرح لك بتعديل قواعد عمولات الأطباء. ينبغي أن تكون مديراً للمركز أو الفرع' };
+  }
+
+  const orgId = ruleData.organization_id || DEFAULT_EGYPT_ORG.id;
+  const pct = ruleData.commission_percentage;
+
+  if (typeof pct !== 'number' || pct < 0 || pct > 100) {
+    return { success: false, error: 'نسبة العمولة يجب أن تكون بين 0% و 100%' };
+  }
+
+  if (!ruleData.commission_base || !['gross', 'net_after_costs'].includes(ruleData.commission_base)) {
+    return { success: false, error: 'يرجى تحديد أساس العمولة بشكل صريح (إجمالي الخدمة Gross أو الصافي بعد التكاليف Net after costs)' };
+  }
+
+  const allRules = getStoredCommissionRules();
+  const existingIndex = ruleData.id ? allRules.findIndex((r) => r.id === ruleData.id) : -1;
+
+  const staff = getStoredStaffUsers();
+  const doc = ruleData.doctor_id && ruleData.doctor_id !== 'all' ? staff.find((s) => s.id === ruleData.doctor_id) : undefined;
+  const docName = doc ? doc.display_name : ruleData.doctor_id === 'all' ? 'جميع الأطباء (All Doctors)' : undefined;
+
+  const services = getStoredServices();
+  const srv = ruleData.service_id && ruleData.service_id !== 'all' ? services.find((s) => s.id === ruleData.service_id) : undefined;
+
+  const now = new Date().toISOString();
+
+  let targetRule: DoctorCommissionRule;
+
+  if (existingIndex >= 0) {
+    targetRule = {
+      ...allRules[existingIndex],
+      ...ruleData,
+      doctor_name: docName || allRules[existingIndex].doctor_name,
+      service_name_ar: srv?.name_ar || (ruleData.service_id === 'all' ? 'جميع الخدمات' : allRules[existingIndex].service_name_ar),
+      service_name_en: srv?.name_en || (ruleData.service_id === 'all' ? 'All Services' : allRules[existingIndex].service_name_en),
+      updated_by: actorUserId,
+      updated_at: now,
+    };
+    allRules[existingIndex] = targetRule;
+  } else {
+    targetRule = {
+      id: ruleData.id || `comm_rule_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      organization_id: orgId,
+      branch_id: ruleData.branch_id,
+      doctor_id: ruleData.doctor_id || 'all',
+      doctor_name: docName || 'جميع الأطباء (All Doctors)',
+      service_id: ruleData.service_id || 'all',
+      service_name_ar: srv?.name_ar || 'جميع الخدمات',
+      service_name_en: srv?.name_en || 'All Services',
+      commission_percentage: pct,
+      commission_base: ruleData.commission_base,
+      active: ruleData.active !== undefined ? ruleData.active : true,
+      created_by: actorUserId,
+      updated_by: actorUserId,
+      created_at: now,
+      updated_at: now,
+    };
+    allRules.unshift(targetRule);
+  }
+
+  setStoredCommissionRules(allRules);
+  return { success: true, rule: targetRule };
+}
+
+export function deleteCommissionRule(ruleId: string, actorRole?: RoleKey): boolean {
+  const allowedRoles: RoleKey[] = ['center_manager', 'branch_manager'];
+  if (actorRole && !allowedRoles.includes(actorRole)) {
+    return false;
+  }
+
+  const allRules = getStoredCommissionRules();
+  const filtered = allRules.filter((r) => r.id !== ruleId);
+  if (filtered.length === allRules.length) return false;
+
+  setStoredCommissionRules(filtered);
+  return true;
+}
+
+export function getStoredLabMaterialCosts(organizationId?: string, invoiceId?: string): LabMaterialCostRecord[] {
+  const orgId = organizationId || DEFAULT_EGYPT_ORG.id;
+  const raw = safeStorage.getItem(RECEPTION_STORAGE_KEYS.LAB_MATERIAL_COSTS);
+  let list: LabMaterialCostRecord[] = raw ? JSON.parse(raw) : [];
+  if (!raw || list.length === 0) {
+    list = SEED_LAB_MATERIAL_COSTS;
+    safeStorage.setItem(RECEPTION_STORAGE_KEYS.LAB_MATERIAL_COSTS, JSON.stringify(list));
+  }
+  return list.filter((c) => (!orgId || c.organization_id === orgId) && (!invoiceId || c.invoice_id === invoiceId));
+}
+
+export function setStoredLabMaterialCosts(costs: LabMaterialCostRecord[]): void {
+  safeStorage.setItem(RECEPTION_STORAGE_KEYS.LAB_MATERIAL_COSTS, JSON.stringify(costs));
+}
+
+export function recordLabMaterialCost(
+  costData: Omit<LabMaterialCostRecord, 'id' | 'created_at' | 'updated_at'>,
+  actorUserId?: string
+): LabMaterialCostRecord {
+  const orgId = costData.organization_id || DEFAULT_EGYPT_ORG.id;
+  const now = new Date().toISOString();
+
+  const qty = costData.quantity && costData.quantity > 0 ? costData.quantity : 1;
+  const unitCost = costData.unit_cost || 0;
+  const actualCost = costData.actual_cost || qty * unitCost;
+
+  const record: LabMaterialCostRecord = {
+    ...costData,
+    id: `cost_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+    organization_id: orgId,
+    quantity: qty,
+    unit_cost: unitCost,
+    actual_cost: Math.round(actualCost * 100) / 100,
+    created_by: actorUserId,
+    created_at: now,
+    updated_at: now,
+  };
+
+  const allCosts = getStoredLabMaterialCosts();
+  allCosts.unshift(record);
+  setStoredLabMaterialCosts(allCosts);
+  return record;
+}
+
+export function calculateFinancialBreakdown(params: {
+  grossServiceAmount: number;
+  insuranceAmount: number;
+  patientAmount: number;
+  labCost?: number;
+  materialCost?: number;
+  commissionPercentage?: number;
+  commissionBase?: CommissionBaseType;
+}): FinancialBreakdown {
+  const gross = params.grossServiceAmount || 0;
+  const ins = params.insuranceAmount || 0;
+  const pat = params.patientAmount || 0;
+  const lab = params.labCost || 0;
+  const mat = params.materialCost || 0;
+  const totalCosts = lab + mat;
+  const baseType = params.commissionBase || 'gross';
+  const pct = typeof params.commissionPercentage === 'number' ? params.commissionPercentage : 0;
+
+  let baseAmount = gross;
+  if (baseType === 'net_after_costs') {
+    baseAmount = Math.max(0, gross - totalCosts);
+  }
+
+  const commission = Math.round((baseAmount * (pct / 100)) * 100) / 100;
+  const clinicNet = Math.round((pat - lab - mat - commission) * 100) / 100;
+
+  return {
+    gross_service_amount: Math.round(gross * 100) / 100,
+    insurance_amount: Math.round(ins * 100) / 100,
+    patient_amount: Math.round(pat * 100) / 100,
+    lab_cost: Math.round(lab * 100) / 100,
+    material_cost: Math.round(mat * 100) / 100,
+    commission_base: baseType,
+    commission_base_amount: Math.round(baseAmount * 100) / 100,
+    commission_percentage: pct,
+    doctor_commission: commission,
+    clinic_net_amount: clinicNet,
+  };
+}
+
+// ==========================================
+// Phase 7.4 Implant Cost Allocation Storage & Calculation Engine
+// ==========================================
+
+export const SEED_IMPLANT_CASES: ImplantCaseRecord[] = [
+  {
+    id: 'case_imp_001',
+    organization_id: DEFAULT_EGYPT_ORG.id,
+    branch_id: '11111111-1111-1111-1111-111111111111',
+    patient_id: 'a1111111-1111-1111-1111-111111111111',
+    doctor_id: 'prof_doc_01',
+    tooth_number: '36',
+    implant_brand: 'Straumann BLX',
+    lab_cost: 1200,
+    notes: 'حالة زراعة ضرس سفلي أيسر مع طعم عظمي وغشاء حيوي',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    components: [
+      {
+        id: 'comp_001',
+        component_type: 'implant',
+        supplier_vendor: 'مؤسسة الدلتا للمستلزمات الطبية - Delta Dental',
+        item_name: 'زرعة تيتانيوم Straumann BLX 4.1mm x 10mm',
+        item_name_ar: 'زرعة تيتانيوم Straumann BLX 4.1mm x 10mm',
+        item_name_en: 'Straumann BLX Titanium Implant 4.1mm x 10mm',
+        planned_quantity: 1,
+        actual_quantity: 1,
+        unit_cost: 2500,
+        actual_cost: 2500,
+        date: '2026-09-10',
+        reference: 'LOT-STR-991',
+      },
+      {
+        id: 'comp_002',
+        component_type: 'bone_graft',
+        supplier_vendor: 'مؤسسة النيل للحلول الطبية - Nile Medical',
+        item_name: 'طعم عظمي بقر المعالجة Bio-Oss 0.5g',
+        item_name_ar: 'طعم عظمي بقر المعالجة Bio-Oss 0.5g',
+        item_name_en: 'Bio-Oss Bovine Bone Graft 0.5g',
+        planned_quantity: 2,
+        actual_quantity: 1,
+        unit_cost: 800,
+        actual_cost: 800,
+        date: '2026-09-10',
+        reference: 'LOT-BIO-102',
+      },
+      {
+        id: 'comp_003',
+        component_type: 'membrane',
+        supplier_vendor: 'مؤسسة النيل للحلول الطبية - Nile Medical',
+        item_name: 'غشاء كولاجين Bio-Gide 15x20mm',
+        item_name_ar: 'غشاء كولاجين Bio-Gide 15x20mm',
+        item_name_en: 'Bio-Gide Resorbable Collagen Membrane 15x20mm',
+        planned_quantity: 1,
+        actual_quantity: 1,
+        unit_cost: 950,
+        actual_cost: 950,
+        date: '2026-09-10',
+        reference: 'LOT-BG-334',
+      },
+      {
+        id: 'comp_004',
+        component_type: 'healing_abutment',
+        supplier_vendor: 'Delta Dental Supplies',
+        item_name: 'دعامة التئام لثة Straumann Healing Abutment',
+        planned_quantity: 1,
+        actual_quantity: 1,
+        unit_cost: 400,
+        actual_cost: 400,
+        date: '2026-09-10',
+        reference: 'REF-HA-01',
+      },
+      {
+        id: 'comp_005',
+        component_type: 'cover_screw',
+        supplier_vendor: 'Delta Dental Supplies',
+        item_name: 'مسمار غطاء الزرعة Cover Screw',
+        planned_quantity: 1,
+        actual_quantity: 1,
+        unit_cost: 150,
+        actual_cost: 150,
+        date: '2026-09-10',
+        reference: 'REF-CS-01',
+      },
+      {
+        id: 'comp_006',
+        component_type: 'healing_cap',
+        supplier_vendor: 'Delta Dental Supplies',
+        item_name: 'غطاء التئام مؤقت Healing Cap',
+        planned_quantity: 1,
+        actual_quantity: 1,
+        unit_cost: 200,
+        actual_cost: 200,
+        date: '2026-09-10',
+        reference: 'REF-HC-01',
+      },
+      {
+        id: 'comp_007',
+        component_type: 'abutment',
+        supplier_vendor: 'Delta Dental Supplies',
+        item_name: 'دعامة تعويضية Titanium Abutment',
+        planned_quantity: 1,
+        actual_quantity: 1,
+        unit_cost: 600,
+        actual_cost: 600,
+        date: '2026-09-10',
+        reference: 'REF-AB-01',
+      },
+      {
+        id: 'comp_008',
+        component_type: 'scan_body',
+        supplier_vendor: 'Delta Dental Supplies',
+        item_name: 'جسم المسح الرقمي Scan Body CAD/CAM',
+        planned_quantity: 1,
+        actual_quantity: 1,
+        unit_cost: 300,
+        actual_cost: 300,
+        date: '2026-09-10',
+        reference: 'REF-SB-01',
+      },
+      {
+        id: 'comp_009',
+        component_type: 'prosthetic_screw',
+        supplier_vendor: 'Delta Dental Supplies',
+        item_name: 'مسمار التركيبة النهائي Prosthetic Screw',
+        planned_quantity: 1,
+        actual_quantity: 1,
+        unit_cost: 120,
+        actual_cost: 120,
+        date: '2026-09-10',
+        reference: 'REF-PS-01',
+      },
+      {
+        id: 'comp_010',
+        component_type: 'other_accessories',
+        supplier_vendor: 'Delta Dental Supplies',
+        item_name: 'حلقة ربط ومستلزمات ملحقة Accessories Kit',
+        planned_quantity: 1,
+        actual_quantity: 1,
+        unit_cost: 180,
+        actual_cost: 180,
+        date: '2026-09-10',
+        reference: 'REF-ACC-01',
+      },
+    ],
+  },
+];
+
+export function getStoredImplantCases(organizationId?: string): ImplantCaseRecord[] {
+  const raw = safeStorage.getItem(RECEPTION_STORAGE_KEYS.IMPLANT_CASES);
+  let list: ImplantCaseRecord[] = raw ? JSON.parse(raw) : [];
+  if (!raw || list.length === 0) {
+    list = SEED_IMPLANT_CASES;
+    safeStorage.setItem(RECEPTION_STORAGE_KEYS.IMPLANT_CASES, JSON.stringify(list));
+  }
+  if (!organizationId) {
+    return list;
+  }
+  return list.filter((c) => c.organization_id === organizationId);
+}
+
+export function setStoredImplantCases(cases: ImplantCaseRecord[]): void {
+  safeStorage.setItem(RECEPTION_STORAGE_KEYS.IMPLANT_CASES, JSON.stringify(cases));
+}
+
+export function getImplantCaseById(id: string, organizationId?: string): ImplantCaseRecord | undefined {
+  const cases = getStoredImplantCases(organizationId);
+  return cases.find((c) => c.id === id);
+}
+
+export function calculateComponentConsumedCost(component: ImplantComponentItem): number {
+  if (typeof component.actual_cost === 'number' && !isNaN(component.actual_cost) && component.actual_cost >= 0) {
+    return component.actual_cost;
+  }
+  if (typeof component.actual_quantity === 'number' && !isNaN(component.actual_quantity)) {
+    return component.actual_quantity * (component.unit_cost || 0);
+  }
+  const qty = typeof component.planned_quantity === 'number' ? component.planned_quantity : 1;
+  return qty * (component.unit_cost || 0);
+}
+
+export function calculateImplantFinancialBreakdown(params: {
+  grossServiceAmount: number;
+  insuranceAmount: number;
+  patientAmount: number;
+  components?: ImplantComponentItem[];
+  labCost?: number;
+  otherMaterialCost?: number;
+  commissionPercentage?: number;
+  commissionBase?: CommissionBaseType;
+  implantCaseId?: string;
+}): ImplantFinancialBreakdown {
+  const components = params.components || [];
+  let totalImplantMaterialCost = 0;
+
+  const componentsCostBreakdown = components.map((c) => {
+    const consumedQty =
+      typeof c.actual_quantity === 'number' && !isNaN(c.actual_quantity)
+        ? c.actual_quantity
+        : typeof c.planned_quantity === 'number'
+        ? c.planned_quantity
+        : 1;
+    const consumedCost = calculateComponentConsumedCost(c);
+    totalImplantMaterialCost += consumedCost;
+
+    return {
+      component_type: c.component_type,
+      item_name: c.item_name || c.item_name_ar || c.item_name_en || c.component_type,
+      consumed_quantity: consumedQty,
+      consumed_cost: Math.round(consumedCost * 100) / 100,
+    };
+  });
+
+  totalImplantMaterialCost = Math.round(totalImplantMaterialCost * 100) / 100;
+  const totalMaterialCost = Math.round((totalImplantMaterialCost + (params.otherMaterialCost || 0)) * 100) / 100;
+
+  const breakdown = calculateFinancialBreakdown({
+    grossServiceAmount: params.grossServiceAmount,
+    insuranceAmount: params.insuranceAmount,
+    patientAmount: params.patientAmount,
+    labCost: params.labCost || 0,
+    materialCost: totalMaterialCost,
+    commissionPercentage: params.commissionPercentage,
+    commissionBase: params.commissionBase,
+  });
+
+  return {
+    ...breakdown,
+    implant_case_id: params.implantCaseId,
+    total_implant_material_cost: totalImplantMaterialCost,
+    components_cost_breakdown: componentsCostBreakdown,
+  };
+}
+
+export function upsertImplantCase(
+  caseData: Partial<ImplantCaseRecord>,
+  actorUserId?: string,
+  actorRole?: RoleKey
+): { success: boolean; caseRecord?: ImplantCaseRecord; error?: string } {
+  const orgId = caseData.organization_id || DEFAULT_EGYPT_ORG.id;
+  const now = new Date().toISOString();
+
+  const allCases = getStoredImplantCases();
+  const existingIndex = caseData.id ? allCases.findIndex((c) => c.id === caseData.id) : -1;
+
+  let targetCase: ImplantCaseRecord;
+
+  if (existingIndex >= 0) {
+    targetCase = {
+      ...allCases[existingIndex],
+      ...caseData,
+      updated_at: now,
+    };
+    allCases[existingIndex] = targetCase;
+  } else {
+    targetCase = {
+      id: caseData.id || `case_imp_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      organization_id: orgId,
+      branch_id: caseData.branch_id || '11111111-1111-1111-1111-111111111111',
+      patient_id: caseData.patient_id || '',
+      doctor_id: caseData.doctor_id,
+      treatment_plan_id: caseData.treatment_plan_id,
+      treatment_plan_service_id: caseData.treatment_plan_service_id,
+      invoice_id: caseData.invoice_id,
+      invoice_item_id: caseData.invoice_item_id,
+      tooth_number: caseData.tooth_number,
+      implant_brand: caseData.implant_brand,
+      components: caseData.components || [],
+      lab_cost: typeof caseData.lab_cost === 'number' ? caseData.lab_cost : 0,
+      notes: caseData.notes,
+      created_by: actorUserId,
+      created_at: now,
+      updated_at: now,
+    };
+    allCases.unshift(targetCase);
+  }
+
+  setStoredImplantCases(allCases);
+
+  // Sync component costs into LabMaterialCostRecord for centralized cost tracking
+  if (targetCase.components && targetCase.components.length > 0) {
+    targetCase.components.forEach((comp) => {
+      const consumedCost = calculateComponentConsumedCost(comp);
+      recordLabMaterialCost(
+        {
+          organization_id: orgId,
+          branch_id: targetCase.branch_id,
+          type: 'material',
+          supplier_vendor: comp.supplier_vendor || 'Implant Supplier',
+          item_name_ar: comp.item_name_ar || comp.item_name,
+          item_name_en: comp.item_name_en || comp.item_name,
+          quantity: comp.actual_quantity !== undefined && comp.actual_quantity !== null ? comp.actual_quantity : comp.planned_quantity,
+          unit_cost: comp.unit_cost,
+          actual_cost: consumedCost,
+          source_reference: comp.reference || targetCase.id,
+          invoice_id: targetCase.invoice_id,
+          service_id: targetCase.treatment_plan_service_id,
+          treatment_plan_id: targetCase.treatment_plan_id,
+          notes: `[Implant Component: ${comp.component_type}] ${comp.notes || ''}`.trim(),
+        },
+        actorUserId
+      );
+    });
+  }
+
+  return { success: true, caseRecord: targetCase };
+}
+
+export function deleteImplantCase(caseId: string, actorRole?: RoleKey): boolean {
+  const allowedRoles: RoleKey[] = ['center_manager', 'branch_manager', 'doctor'];
+  if (actorRole && !allowedRoles.includes(actorRole)) {
+    return false;
+  }
+
+  const allCases = getStoredImplantCases();
+  const filtered = allCases.filter((c) => c.id !== caseId);
+  if (filtered.length === allCases.length) return false;
+
+  setStoredImplantCases(filtered);
+  return true;
+}
+
+// ==========================================
+// Phase 8.1: Supplier / Vendor Management Storage Engine
+// ==========================================
+
+export const SEED_SUPPLIERS: Supplier[] = [
+  {
+    id: 'sup_001',
+    organization_id: DEFAULT_EGYPT_ORG.id,
+    name_ar: 'معمل النيل لتركيبات الأسنان',
+    name_en: 'Nile Dental Laboratory',
+    type: 'dental_lab',
+    phone: '01012345678',
+    notes: 'معمل متخصص في تركيبات الزيركون والبورسلين والعدسات التجميلية',
+    active: true,
+    created_at: '2026-01-10T08:00:00Z',
+    updated_at: '2026-01-10T08:00:00Z',
+  },
+  {
+    id: 'sup_002',
+    organization_id: DEFAULT_EGYPT_ORG.id,
+    name_ar: 'مؤسسة الدلتا لمستلزمات وزراعات الأسنان',
+    name_en: 'Delta Dental Implant & Materials Co.',
+    type: 'implant_supplier',
+    phone: '01223456789',
+    notes: 'مورد معتمد لأنظمة الزراعة ومستلزمات العظم والأغشية الطبية',
+    active: true,
+    created_at: '2026-01-12T09:30:00Z',
+    updated_at: '2026-01-12T09:30:00Z',
+  },
+  {
+    id: 'sup_003',
+    organization_id: DEFAULT_EGYPT_ORG.id,
+    name_ar: 'مؤسسة النيل للحلول والخامات الطبية',
+    name_en: 'Nile Medical Materials & Supplies',
+    type: 'dental_materials',
+    phone: '01134567890',
+    notes: 'مورد المواد الاستهلاكية الكومبوزيت، الحشوات والحراريات',
+    active: true,
+    created_at: '2026-01-15T11:00:00Z',
+    updated_at: '2026-01-15T11:00:00Z',
+  },
+  {
+    id: 'sup_004',
+    organization_id: DEFAULT_EGYPT_ORG.id,
+    name_ar: 'شركة الأهرام للمستلزمات الطبية والتعقيم',
+    name_en: 'Pyramids General Medical Supplies',
+    type: 'medical_supplies',
+    phone: '01545678901',
+    notes: 'مورد أجهزة التعقيم، القفازات، والكمامات ومستلزمات السلامة',
+    active: true,
+    created_at: '2026-02-01T10:00:00Z',
+    updated_at: '2026-02-01T10:00:00Z',
+  },
+];
+
+export function getStoredSuppliers(organizationId?: string): Supplier[] {
+  const raw = safeStorage.getItem(RECEPTION_STORAGE_KEYS.SUPPLIERS);
+  let list: Supplier[] = raw ? JSON.parse(raw) : [];
+  if (!raw || list.length === 0) {
+    list = SEED_SUPPLIERS;
+    safeStorage.setItem(RECEPTION_STORAGE_KEYS.SUPPLIERS, JSON.stringify(list));
+  }
+  if (!organizationId) {
+    return list;
+  }
+  return list.filter((s) => s.organization_id === organizationId);
+}
+
+export function setStoredSuppliers(suppliers: Supplier[]): void {
+  safeStorage.setItem(RECEPTION_STORAGE_KEYS.SUPPLIERS, JSON.stringify(suppliers));
+}
+
+export function getSupplierById(id: string, organizationId?: string): Supplier | undefined {
+  const list = getStoredSuppliers(organizationId);
+  return list.find((s) => s.id === id);
+}
+
+export function upsertSupplier(
+  supplierData: Partial<Supplier> & { id?: string; name_ar?: string; name_en?: string },
+  actorUserId?: string,
+  actorRole?: string
+): { success: boolean; supplier?: Supplier; error?: string } {
+  // Authorization check - Center Manager & Branch Manager allowed
+  const allowedRoles = ['center_manager', 'branch_manager', 'admin', 'super_admin'];
+  if (actorRole && !allowedRoles.includes(actorRole)) {
+    return {
+      success: false,
+      error: 'غير مصرح لك بإدارة الموردين والشركات. هذه الصلاحية مخصصة لمدير المركز أو مدير الفرع فقط.',
+    };
+  }
+
+  const nameAr = supplierData.name_ar?.trim();
+  const nameEn = supplierData.name_en?.trim();
+
+  if (!nameAr && !nameEn) {
+    return {
+      success: false,
+      error: 'يرجى إدخال اسم المورد بالعربية أو الإنجليزية على الأقل.',
+    };
+  }
+
+  const allSuppliers = getStoredSuppliers(); // get ALL suppliers across orgs to update safely
+  const now = new Date().toISOString();
+  const id = supplierData.id || `sup_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  const orgId = supplierData.organization_id || DEFAULT_EGYPT_ORG.id;
+
+  const existingIndex = allSuppliers.findIndex((s) => s.id === id);
+
+  const newSupplier: Supplier = {
+    id,
+    organization_id: orgId,
+    name_ar: nameAr || nameEn || '',
+    name_en: nameEn || nameAr || '',
+    type: supplierData.type || 'dental_materials',
+    phone: supplierData.phone?.trim() || '',
+    notes: supplierData.notes?.trim() || '',
+    active: supplierData.active !== undefined ? supplierData.active : true,
+    created_at: existingIndex >= 0 ? allSuppliers[existingIndex].created_at : now,
+    updated_at: now,
+  };
+
+  if (existingIndex >= 0) {
+    allSuppliers[existingIndex] = newSupplier;
+  } else {
+    allSuppliers.unshift(newSupplier);
+  }
+
+  setStoredSuppliers(allSuppliers);
+  return { success: true, supplier: newSupplier };
+}
+
+export function toggleSupplierActive(
+  id: string,
+  active: boolean,
+  actorUserId?: string,
+  actorRole?: string,
+  organizationId?: string
+): { success: boolean; supplier?: Supplier; error?: string } {
+  const allowedRoles = ['center_manager', 'branch_manager', 'admin', 'super_admin'];
+  if (actorRole && !allowedRoles.includes(actorRole)) {
+    return {
+      success: false,
+      error: 'غير مصرح لك بتغيير حالة المورد.',
+    };
+  }
+
+  const allSuppliers = getStoredSuppliers();
+  const index = allSuppliers.findIndex((s) => s.id === id);
+  if (index === -1) {
+    return { success: false, error: 'المورد المطلوب غير موجود.' };
+  }
+
+  const supplier = allSuppliers[index];
+  if (organizationId && supplier.organization_id !== organizationId) {
+    return { success: false, error: 'غير مصرح لك بتعديل مورد تابع لمؤسسة أخرى.' };
+  }
+
+  supplier.active = active;
+  supplier.updated_at = new Date().toISOString();
+  allSuppliers[index] = supplier;
+  setStoredSuppliers(allSuppliers);
+
+  return { success: true, supplier };
+}
+
 
 

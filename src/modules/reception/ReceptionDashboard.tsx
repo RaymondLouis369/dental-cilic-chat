@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import {
   Calendar,
+  CalendarClock,
   Clock,
   UserCheck,
   Plus,
@@ -20,6 +21,11 @@ import {
   Phone,
   Shield,
   Tag,
+  FileScan,
+  Share2,
+  ClipboardList,
+  FlaskConical,
+  Receipt,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -32,6 +38,12 @@ import {
 } from '../../lib/receptionAndBillingStorage';
 import { getStoredPatients } from '../../lib/patientStorage';
 import { getStoredBranches, getStoredStaffUsers } from '../../lib/storage';
+import {
+  getStoredInvestigationRequests,
+  getStoredReferrals,
+  getStoredDoctorTasks,
+  getStoredLabOrders,
+} from '../../lib/clinicalStorage';
 import { Appointment, WaitingListEntry, Service } from '../../types/receptionAndBilling';
 import { Patient } from '../../types/patient';
 import { StaffUser, Branch } from '../../types';
@@ -40,6 +52,10 @@ import { NewBookingModal } from './NewBookingModal';
 import { WalkInModal } from './WalkInModal';
 import { PatientLookupModal } from './PatientLookupModal';
 import { CustomServiceModal } from './CustomServiceModal';
+import { ReceptionTasksModal } from './ReceptionTasksModal';
+import { LabOrderManagementDashboard } from './LabOrderManagementDashboard';
+import { InvoiceModal } from './InvoiceModal';
+import { RecallFollowUpManagementModal } from './RecallFollowUpManagementModal';
 
 export const ReceptionDashboard: React.FC = () => {
   const { session } = useAuth();
@@ -60,11 +76,17 @@ export const ReceptionDashboard: React.FC = () => {
     return branches[0]?.id || '11111111-1111-1111-1111-111111111111';
   });
 
+  // Reception Workspace Main Tab state ('appointments' | 'lab_orders')
+  const [receptionViewTab, setReceptionViewTab] = useState<'appointments' | 'lab_orders'>('appointments');
+
   // Modals state
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [showWalkInModal, setShowWalkInModal] = useState(false);
   const [showLookupModal, setShowLookupModal] = useState(false);
   const [showCustomServiceModal, setShowCustomServiceModal] = useState(false);
+  const [showTasksModal, setShowTasksModal] = useState(false);
+  const [showRecallModal, setShowRecallModal] = useState(false);
+  const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [selectedPatientFile, setSelectedPatientFile] = useState<Patient | null>(null);
 
   // Search & Filter state
@@ -87,6 +109,97 @@ export const ReceptionDashboard: React.FC = () => {
   const patients: Patient[] = useMemo(() => getStoredPatients(), [refreshKey]);
   const staff: StaffUser[] = useMemo(() => getStoredStaffUsers(), []);
   const services: Service[] = useMemo(() => getStoredServices(), []);
+  const investigations = useMemo(
+    () => getStoredInvestigationRequests(),
+    [refreshKey]
+  );
+  const referrals = useMemo(
+    () => getStoredReferrals(),
+    [refreshKey]
+  );
+  const doctorTasks = useMemo(
+    () => getStoredDoctorTasks(),
+    [refreshKey]
+  );
+  const labOrders = useMemo(
+    () => getStoredLabOrders(),
+    [refreshKey]
+  );
+
+  const activeLabOrdersCount = useMemo(() => {
+    return labOrders.filter(
+      (o) =>
+        (selectedBranchId === 'all' || o.branch_id === selectedBranchId) &&
+        o.status !== 'fitted' &&
+        o.status !== 'cancelled'
+    ).length;
+  }, [labOrders, selectedBranchId]);
+
+  const pendingDoctorTasksCount = useMemo(() => {
+    return doctorTasks.filter(
+      (t) =>
+        (selectedBranchId === 'all' || t.branch_id === selectedBranchId) &&
+        (t.status === 'pending' || t.status === 'in_progress')
+    ).length;
+  }, [doctorTasks, selectedBranchId]);
+
+  // Real-time Branch Summary Stats ('Pending Appointments', 'Active Investigations', 'Referrals Pending', 'In Clinic Patients')
+  const branchRealtimeStats = useMemo(() => {
+    // 1. Pending Appointments (confirmed, waiting, or rescheduled for the selected branch & date)
+    const pendingAppointmentsCount = appointments.filter(
+      (a) =>
+        (selectedBranchId === 'all' || a.branch_id === selectedBranchId) &&
+        a.appointment_date === selectedDate &&
+        (a.status === 'confirmed' || a.status === 'waiting' || a.status === 'rescheduled')
+    ).length;
+
+    // 2. Active Investigations (requested or pending for current branch)
+    const activeInvestigationsCount = investigations.filter((inv) => {
+      const doc = staff.find((s) => s.id === inv.doctor_id);
+      const matchBranch =
+        selectedBranchId === 'all' ||
+        inv.branch_id === selectedBranchId ||
+        doc?.branch_id === selectedBranchId;
+      const isPendingStatus = inv.status === 'requested' || inv.status === 'pending';
+      return matchBranch && isPendingStatus;
+    }).length;
+
+    // 3. Referrals Pending (sent, pending, or draft for current branch)
+    const pendingReferralsCount = referrals.filter((ref) => {
+      const doc = staff.find((s) => s.id === ref.referring_doctor_id);
+      const targetDoc = staff.find((s) => s.id === ref.target_doctor_id);
+      const matchBranch =
+        selectedBranchId === 'all' ||
+        doc?.branch_id === selectedBranchId ||
+        targetDoc?.branch_id === selectedBranchId;
+      const isPendingStatus =
+        ref.status === 'pending' || ref.status === 'sent' || ref.status === 'draft';
+      return matchBranch && isPendingStatus;
+    }).length;
+
+    // 4. In-Clinic Patients Present
+    const activeInClinicCount = appointments.filter(
+      (a) =>
+        (selectedBranchId === 'all' || a.branch_id === selectedBranchId) &&
+        a.appointment_date === selectedDate &&
+        (a.status === 'arrived' || a.status === 'with_doctor' || a.status === 'waiting')
+    ).length;
+
+    return {
+      pendingAppointmentsCount,
+      activeInvestigationsCount,
+      pendingReferralsCount,
+      activeInClinicCount,
+    };
+  }, [
+    appointments,
+    investigations,
+    referrals,
+    selectedBranchId,
+    selectedDate,
+    patients,
+    staff,
+  ]);
 
   // Filter appointments for selected branch and date
   const filteredAppointments = useMemo(() => {
@@ -221,61 +334,152 @@ export const ReceptionDashboard: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Top Header */}
-      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="p-2 bg-teal-50 text-teal-700 rounded-xl">
-              <UserCheck className="w-6 h-6" />
+      {/* Reception Workspace View Navigation Tabs */}
+      <div className="flex items-center gap-2 border-b border-slate-200 pb-3">
+        <button
+          onClick={() => setReceptionViewTab('appointments')}
+          className={`px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all ${
+            receptionViewTab === 'appointments'
+              ? 'bg-teal-700 text-white shadow-xs'
+              : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
+          }`}
+        >
+          <Calendar className="w-4 h-4" />
+          <span>{isAr ? 'المواعيد وقائمة الانتظار' : 'Appointments & Waiting List'}</span>
+        </button>
+
+        <button
+          id="reception-lab-orders-tab-btn"
+          onClick={() => setReceptionViewTab('lab_orders')}
+          className={`px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all relative ${
+            receptionViewTab === 'lab_orders'
+              ? 'bg-purple-700 text-white shadow-xs'
+              : 'bg-white text-purple-900 hover:bg-purple-50 border border-purple-200'
+          }`}
+        >
+          <FlaskConical className="w-4 h-4 text-purple-400" />
+          <span>{isAr ? 'إدارة أوردات المعمل' : 'Lab Order Management'}</span>
+          {activeLabOrdersCount > 0 && (
+            <span
+              className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                receptionViewTab === 'lab_orders'
+                  ? 'bg-purple-900 text-white'
+                  : 'bg-purple-100 text-purple-800 border border-purple-200'
+              }`}
+            >
+              {activeLabOrdersCount}
             </span>
+          )}
+        </button>
+      </div>
+
+      {receptionViewTab === 'lab_orders' ? (
+        <LabOrderManagementDashboard
+          onBackToAppointments={() => setReceptionViewTab('appointments')}
+        />
+      ) : (
+        <>
+          {/* Top Header */}
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
-              <h1 className="text-xl font-bold text-slate-900">
-                {isAr ? 'مكتب الاستقبال وإدارة المواعيد' : 'Reception & Appointment Desk'}
-              </h1>
-              <p className="text-xs text-slate-500 mt-0.5">
-                {isAr
-                  ? 'متابعة مواعيد اليوم، تسجيل الوصول، وقائمة الانتظار في جمهورية مصر العربية'
-                  : "Today's schedule, patient arrivals, and waiting list in Egypt"}
-              </p>
+              <div className="flex items-center gap-2">
+                <span className="p-2 bg-teal-50 text-teal-700 rounded-xl">
+                  <UserCheck className="w-6 h-6" />
+                </span>
+                <div>
+                  <h1 className="text-xl font-bold text-slate-900">
+                    {isAr ? 'مكتب الاستقبال وإدارة المواعيد' : 'Reception & Appointment Desk'}
+                  </h1>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {isAr
+                      ? 'متابعة مواعيد اليوم، تسجيل الوصول، وقائمة الانتظار في جمهورية مصر العربية'
+                      : "Today's schedule, patient arrivals, and waiting list in Egypt"}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Quick Action Buttons */}
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => setShowBookingModal(true)}
+                className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold shadow-sm flex items-center gap-1.5 transition-all"
+              >
+                <Plus className="w-4 h-4" />
+                <span>{isAr ? 'حجز موعد جديد' : 'New Booking'}</span>
+              </button>
+
+              <button
+                onClick={() => setShowWalkInModal(true)}
+                className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold shadow-sm flex items-center gap-1.5 transition-all"
+              >
+                <Clock className="w-4 h-4" />
+                <span>{isAr ? 'واك-إن / انتظار' : 'Walk-In'}</span>
+              </button>
+
+              <button
+                onClick={() => setShowLookupModal(true)}
+                className="px-3.5 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold shadow-sm flex items-center gap-1.5 transition-all"
+              >
+                <QrCode className="w-4 h-4" />
+                <span>{isAr ? 'فحص QR / وصول' : 'QR Check-in'}</span>
+              </button>
+
+              <button
+                onClick={() => setShowCustomServiceModal(true)}
+                className="px-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all"
+              >
+                <Tag className="w-3.5 h-3.5" />
+                <span>{isAr ? 'سعر مخصص' : 'Custom Price'}</span>
+              </button>
+
+              <button
+                id="reception-lab-orders-quick-btn"
+                onClick={() => setReceptionViewTab('lab_orders')}
+                className="px-3.5 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold shadow-sm flex items-center gap-2 transition-all relative"
+              >
+                <FlaskConical className="w-4 h-4 text-purple-200" />
+                <span>{isAr ? 'أوردات المعمل' : 'Lab Orders'}</span>
+                {activeLabOrdersCount > 0 && (
+                  <span className="px-1.5 py-0.5 bg-purple-900 text-white text-[10px] font-black rounded-full shadow-xs">
+                    {activeLabOrdersCount}
+                  </span>
+                )}
+              </button>
+
+              <button
+                id="reception-tasks-handoffs-btn"
+                onClick={() => setShowTasksModal(true)}
+                className="px-3.5 py-2 bg-gradient-to-r from-teal-700 to-slate-800 hover:from-teal-800 hover:to-slate-900 text-white rounded-xl text-xs font-bold shadow-sm flex items-center gap-2 transition-all relative"
+              >
+                <ClipboardList className="w-4 h-4 text-teal-300" />
+                <span>{isAr ? 'مهام وتسليمات الأطباء' : 'Tasks & Handoffs'}</span>
+                {pendingDoctorTasksCount > 0 && (
+                  <span className="px-1.5 py-0.5 bg-red-500 text-white text-[10px] font-black rounded-full shadow-xs animate-pulse">
+                    {pendingDoctorTasksCount}
+                  </span>
+                )}
+              </button>
+
+              <button
+                id="reception-recall-followup-btn"
+                onClick={() => setShowRecallModal(true)}
+                className="px-3.5 py-2 bg-gradient-to-r from-teal-800 to-emerald-900 hover:from-teal-900 hover:to-emerald-950 text-white rounded-xl text-xs font-bold shadow-sm flex items-center gap-2 transition-all relative"
+              >
+                <CalendarClock className="w-4 h-4 text-emerald-300" />
+                <span>{isAr ? 'المتابعة والاستدعاء' : 'Recalls & Follow-Ups'}</span>
+              </button>
+
+              <button
+                id="reception-invoices-billing-btn"
+                onClick={() => setShowInvoiceModal(true)}
+                className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-sm flex items-center gap-1.5 transition-all"
+              >
+                <Receipt className="w-4 h-4 text-blue-200" />
+                <span>{isAr ? 'الفواتير والحسابات' : 'Invoices & Billing'}</span>
+              </button>
             </div>
           </div>
-        </div>
-
-        {/* Quick Action Buttons */}
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={() => setShowBookingModal(true)}
-            className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold shadow-sm flex items-center gap-1.5 transition-all"
-          >
-            <Plus className="w-4 h-4" />
-            <span>{isAr ? 'حجز موعد جديد' : 'New Booking'}</span>
-          </button>
-
-          <button
-            onClick={() => setShowWalkInModal(true)}
-            className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold shadow-sm flex items-center gap-1.5 transition-all"
-          >
-            <Clock className="w-4 h-4" />
-            <span>{isAr ? 'واك-إن / انتظار' : 'Walk-In'}</span>
-          </button>
-
-          <button
-            onClick={() => setShowLookupModal(true)}
-            className="px-3.5 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold shadow-sm flex items-center gap-1.5 transition-all"
-          >
-            <QrCode className="w-4 h-4" />
-            <span>{isAr ? 'فحص QR / وصول' : 'QR Check-in'}</span>
-          </button>
-
-          <button
-            onClick={() => setShowCustomServiceModal(true)}
-            className="px-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all"
-          >
-            <Tag className="w-3.5 h-3.5" />
-            <span>{isAr ? 'سعر مخصص' : 'Custom Price'}</span>
-          </button>
-        </div>
-      </div>
 
       {/* Filter & Date Bar */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm text-xs">
@@ -330,6 +534,85 @@ export const ReceptionDashboard: React.FC = () => {
             }
             className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-medium focus:ring-2 focus:ring-teal-500"
           />
+        </div>
+      </div>
+
+      {/* Real-time Branch Summary Cards Section */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Card 1: Pending Appointments */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-start justify-between relative overflow-hidden group hover:border-blue-300 transition-all">
+          <div className="space-y-1">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-500">
+              <Calendar className="w-4 h-4 text-blue-600" />
+              <span>{isAr ? 'المواعيد القادمة المعلقة' : 'Pending Appointments'}</span>
+            </div>
+            <div className="text-2xl font-black text-slate-900 font-mono">
+              {branchRealtimeStats.pendingAppointmentsCount}
+            </div>
+            <p className="text-[11px] text-slate-400">
+              {isAr ? 'مواعيد بانتظار الحضور والتأكيد اليوم' : 'Confirmed & waiting today'}
+            </p>
+          </div>
+          <div className="p-3 bg-blue-50 text-blue-700 rounded-2xl group-hover:scale-105 transition-all shrink-0">
+            <Clock className="w-5 h-5" />
+          </div>
+        </div>
+
+        {/* Card 2: Active Investigations */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-start justify-between relative overflow-hidden group hover:border-indigo-300 transition-all">
+          <div className="space-y-1">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-500">
+              <FileScan className="w-4 h-4 text-indigo-600" />
+              <span>{isAr ? 'الفحوصات والأشعة النشطة' : 'Active Investigations'}</span>
+            </div>
+            <div className="text-2xl font-black text-slate-900 font-mono">
+              {branchRealtimeStats.activeInvestigationsCount}
+            </div>
+            <p className="text-[11px] text-slate-400">
+              {isAr ? 'طلبات تحاليل وأشعة بانتظار النتائج' : 'Radiology & lab orders pending'}
+            </p>
+          </div>
+          <div className="p-3 bg-indigo-50 text-indigo-700 rounded-2xl group-hover:scale-105 transition-all shrink-0">
+            <FileScan className="w-5 h-5" />
+          </div>
+        </div>
+
+        {/* Card 3: Referrals Pending */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-start justify-between relative overflow-hidden group hover:border-amber-300 transition-all">
+          <div className="space-y-1">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-500">
+              <Share2 className="w-4 h-4 text-amber-600" />
+              <span>{isAr ? 'الإحالات الطبية المعلقة' : 'Referrals Pending'}</span>
+            </div>
+            <div className="text-2xl font-black text-slate-900 font-mono">
+              {branchRealtimeStats.pendingReferralsCount}
+            </div>
+            <p className="text-[11px] text-slate-400">
+              {isAr ? 'إحالات استشاريين بانتظار المتابعة' : 'Consultant & hospital referrals'}
+            </p>
+          </div>
+          <div className="p-3 bg-amber-50 text-amber-700 rounded-2xl group-hover:scale-105 transition-all shrink-0">
+            <Share2 className="w-5 h-5" />
+          </div>
+        </div>
+
+        {/* Card 4: In-Clinic Patients */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-start justify-between relative overflow-hidden group hover:border-teal-300 transition-all">
+          <div className="space-y-1">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-500">
+              <Users className="w-4 h-4 text-teal-600" />
+              <span>{isAr ? 'المرضى المتواجدون بالفرع' : 'In-Clinic Patients'}</span>
+            </div>
+            <div className="text-2xl font-black text-teal-700 font-mono">
+              {branchRealtimeStats.activeInClinicCount}
+            </div>
+            <p className="text-[11px] text-slate-400">
+              {isAr ? 'حضور بالانتظار أو في الكشف' : 'Arrived, waiting, or in clinic'}
+            </p>
+          </div>
+          <div className="p-3 bg-teal-50 text-teal-700 rounded-2xl group-hover:scale-105 transition-all shrink-0">
+            <UserCheck className="w-5 h-5" />
+          </div>
         </div>
       </div>
 
@@ -767,6 +1050,8 @@ export const ReceptionDashboard: React.FC = () => {
           </div>
         </div>
       )}
+      </>
+      )}
 
       {/* Sub-modals */}
       <NewBookingModal
@@ -788,6 +1073,23 @@ export const ReceptionDashboard: React.FC = () => {
         isOpen={showCustomServiceModal}
         onClose={() => setShowCustomServiceModal(false)}
         onSuccess={refreshData}
+      />
+      <ReceptionTasksModal
+        isOpen={showTasksModal}
+        onClose={() => setShowTasksModal(false)}
+        selectedBranchId={selectedBranchId}
+        onTaskUpdated={refreshData}
+      />
+      <RecallFollowUpManagementModal
+        isOpen={showRecallModal}
+        onClose={() => setShowRecallModal(false)}
+        selectedBranchId={selectedBranchId}
+        onFollowUpUpdated={refreshData}
+      />
+      <InvoiceModal
+        isOpen={showInvoiceModal}
+        onClose={() => setShowInvoiceModal(false)}
+        onInvoiceUpdated={refreshData}
       />
     </div>
   );

@@ -42,15 +42,24 @@ import {
   ToothCondition,
   ToothSurface,
   ChartType,
+  LabOrder,
+  LabOrderStatus,
+  LabOrderChatMessage,
+  LabOrderChatTopic,
+  LabOrderChatStatus,
+  LabOrderChatThread,
 } from '../types/clinical';
 import { Patient, StaffUser, Appointment, DentalService } from '../types';
 import { DEFAULT_EGYPT_ORG } from './storage';
 import { getStoredPatients } from './patientStorage';
+import { createNotification } from './notificationStorage';
 import {
   getStoredAppointments,
   getStoredWaitingList,
   getStoredServices,
+  getStoredServiceCategories,
   updateAppointmentStatus,
+  calculateServicePriceAndInsurance,
 } from './receptionAndBillingStorage';
 
 // Storage Keys
@@ -69,6 +78,9 @@ export const CLINICAL_STORAGE_KEYS = {
   DOCTOR_TASKS: 'dental_saas_doctor_tasks',
   FOLLOW_UP_PLANS: 'dental_saas_follow_up_plans',
   DOCTOR_CONSULTATIONS: 'dental_saas_doctor_consultations',
+  LAB_ORDERS: 'dental_saas_lab_orders',
+  LAB_ORDER_CHAT_MESSAGES: 'dental_saas_lab_order_chat_messages',
+  LAB_ORDER_CHAT_THREADS: 'dental_saas_lab_order_chat_threads',
 };
 
 // Memory fallback store
@@ -753,7 +765,8 @@ export const SEED_FOLLOW_UP_PLANS: FollowUpPlan[] = [
     doctor_id: 'prof_doc_01',
     branch_id: '11111111-1111-1111-1111-111111111111',
     visit_id: 'vis_001',
-    due_date: '2026-01-24', // 14 days later
+    recall_type: 'cleaning_hygiene',
+    due_date: '2026-09-25',
     interval: '14_days',
     reason: 'متابعة استجابة اللثة لجلسة التنظيف والبدء في حشو السن #16',
     notes: 'الاتصال بالمريض للتأكيد قبل الموعد بـ 24 ساعة.',
@@ -761,6 +774,83 @@ export const SEED_FOLLOW_UP_PLANS: FollowUpPlan[] = [
     reception_task_id: 'tsk_003',
     created_at: '2026-01-10T11:55:00Z',
     updated_at: '2026-01-10T11:55:00Z',
+  },
+  {
+    id: 'fup_002',
+    organization_id: DEFAULT_EGYPT_ORG.id,
+    patient_id: 'a2222222-2222-2222-2222-222222222222',
+    doctor_id: 'prof_doc_01',
+    branch_id: '11111111-1111-1111-1111-111111111111',
+    recall_type: 'suture_removal',
+    due_date: '2026-09-18', // due / overdue
+    interval: '7_days',
+    reason: 'إزالة خيوط الجراحة وفحص التئام اللثة بعد الخلع الجراحي',
+    notes: 'التأكد من عدم وجود التهابات أو ألم شديد.',
+    status: 'due',
+    created_at: '2026-09-11T10:00:00Z',
+    updated_at: '2026-09-11T10:00:00Z',
+  },
+  {
+    id: 'fup_003',
+    organization_id: DEFAULT_EGYPT_ORG.id,
+    patient_id: 'a3333333-3333-3333-3333-333333333333',
+    doctor_id: 'prof_doc_02',
+    branch_id: '22222222-2222-2222-2222-222222222222',
+    recall_type: 'implant',
+    due_date: '2026-09-20',
+    interval: '3_months',
+    reason: 'متابعة اندماج الطعم العظمي وزرعة الأسنان والتحضير للتركيب',
+    notes: 'عمل أشعة بانوراما قبل الدخول للطبيب.',
+    status: 'contacted',
+    contact_result: 'تم التواصل مع المريض وأبدى موافقته وتأكيد الحضور',
+    last_contacted_at: '2026-09-19T09:00:00Z',
+    created_at: '2026-06-20T09:30:00Z',
+    updated_at: '2026-09-19T09:00:00Z',
+  },
+  {
+    id: 'fup_004',
+    organization_id: DEFAULT_EGYPT_ORG.id,
+    patient_id: 'a1111111-1111-1111-1111-111111111111',
+    doctor_id: 'prof_doc_01',
+    branch_id: '11111111-1111-1111-1111-111111111111',
+    recall_type: 'orthodontic',
+    due_date: '2026-09-30',
+    interval: '1_month',
+    reason: 'شد وسلك التقويم الدوري وفحص الإطباق',
+    notes: 'تبديل المطاط وتعديل القوس العلوي.',
+    status: 'scheduled',
+    created_at: '2026-08-30T14:00:00Z',
+    updated_at: '2026-08-30T14:00:00Z',
+  },
+  {
+    id: 'fup_005',
+    organization_id: DEFAULT_EGYPT_ORG.id,
+    patient_id: 'a2222222-2222-2222-2222-222222222222',
+    doctor_id: 'prof_doc_02',
+    branch_id: '11111111-1111-1111-1111-111111111111',
+    recall_type: 'prosthetic',
+    due_date: '2026-09-15',
+    interval: '14_days',
+    reason: 'قياس تجربة الزركونيا والتركيبات الموقتة',
+    notes: 'تم استلام التركيبة من المختبر بنجاح.',
+    status: 'completed',
+    created_at: '2026-09-01T11:00:00Z',
+    updated_at: '2026-09-15T12:00:00Z',
+  },
+  {
+    id: 'fup_006',
+    organization_id: DEFAULT_EGYPT_ORG.id,
+    patient_id: 'a3333333-3333-3333-3333-333333333333',
+    doctor_id: 'prof_doc_01',
+    branch_id: '11111111-1111-1111-1111-111111111111',
+    recall_type: 'post_operative',
+    due_date: '2026-09-10',
+    interval: '2_days',
+    reason: 'فحص الألم والنزيف بعد عملية حفر وتغطية العصب',
+    notes: 'المريض لم يحضر في الموعد المحدد ولم يرد على الهاتف.',
+    status: 'missed',
+    created_at: '2026-09-08T16:00:00Z',
+    updated_at: '2026-09-11T09:00:00Z',
   },
 ];
 
@@ -1500,35 +1590,88 @@ export function addServiceToTreatmentPlan(params: {
   serviceCode?: string;
   serviceNameAr?: string;
   serviceNameEn?: string;
+  categoryId?: string;
+  categoryNameAr?: string;
+  categoryNameEn?: string;
   toothNumber?: string;
   area?: string;
   sequenceOrder?: number;
   doctorId: string;
   branchId?: string;
   clinicalNotes?: string;
+  approvedCoveragePercentage?: number;
+  approvalStatus?: 'direct_coverage' | 'pending_approval' | 'approved' | 'rejected';
 }): TreatmentPlanService {
+  const orgId = params.organizationId || DEFAULT_EGYPT_ORG.id;
   const planServices = getStoredTreatmentPlanServices();
   const catalog = getStoredServices();
+  const categories = getStoredServiceCategories();
   const srvMeta = catalog.find((c) => c.id === params.serviceId);
+
+  const matchedCat = categories.find(
+    (c) => c.id === (params.categoryId || srvMeta?.category_id || (srvMeta as any)?.category)
+  );
 
   const existingInPlan = planServices.filter((s) => s.treatment_plan_id === params.treatmentPlanId);
   const nextSeq = params.sequenceOrder || existingInPlan.length + 1;
 
+  // Calculate price & insurance breakdown
+  const pricingRes = calculateServicePriceAndInsurance({
+    organizationId: orgId,
+    patientId: params.patientId,
+    serviceId: params.serviceId,
+  });
+
+  // Calculate teeth count multiplier for multiple teeth (e.g. "16, 17" -> 2)
+  let teethCount = 1;
+  if (params.toothNumber && params.toothNumber.trim()) {
+    const teethArr = params.toothNumber.split(',').map((t) => t.trim()).filter(Boolean);
+    if (teethArr.length > 0) teethCount = teethArr.length;
+  }
+
+  const unitPrice = pricingRes.total_price;
+  const totalPrice = unitPrice * teethCount;
+  const originalCoveragePct = pricingRes.coverage_percentage;
+  const originalCopayPct = pricingRes.copay_percentage;
+  const approvedCoveragePct = params.approvedCoveragePercentage !== undefined ? params.approvedCoveragePercentage : originalCoveragePct;
+  const approvedCopayPct = 100 - approvedCoveragePct;
+
+  const reqApproval = pricingRes.requires_approval;
+  const approvalStatus = params.approvalStatus || (reqApproval ? 'pending_approval' : 'direct_coverage');
+
+  // Effective coverage % for calculation
+  const effectivePct = approvalStatus === 'rejected' ? 0 : approvedCoveragePct;
+  const insuranceCoverageAmount = Math.round(((totalPrice * effectivePct) / 100) * 100) / 100;
+  const patientCopayAmount = Math.round((totalPrice - insuranceCoverageAmount) * 100) / 100;
+
   const item: TreatmentPlanService = {
     id: `tps_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-    organization_id: params.organizationId || DEFAULT_EGYPT_ORG.id,
+    organization_id: orgId,
     treatment_plan_id: params.treatmentPlanId,
     patient_id: params.patientId,
     service_id: params.serviceId,
     service_code: params.serviceCode || srvMeta?.code,
     service_name_ar: params.serviceNameAr || srvMeta?.name_ar,
     service_name_en: params.serviceNameEn || srvMeta?.name_en,
+    category_id: params.categoryId || matchedCat?.id || srvMeta?.category_id,
+    category_name_ar: params.categoryNameAr || matchedCat?.name_ar,
+    category_name_en: params.categoryNameEn || matchedCat?.name_en,
     tooth_number: params.toothNumber,
     area: params.area,
     sequence_order: nextSeq,
     doctor_id: params.doctorId,
     branch_id: params.branchId || '11111111-1111-1111-1111-111111111111',
     status: 'planned',
+    unit_price: unitPrice,
+    total_price: totalPrice,
+    coverage_percentage: originalCoveragePct,
+    patient_copay_percentage: originalCopayPct,
+    approved_coverage_percentage: approvedCoveragePct,
+    approved_copay_percentage: approvedCopayPct,
+    insurance_coverage_amount: insuranceCoverageAmount,
+    patient_copay_amount: patientCopayAmount,
+    requires_approval: reqApproval,
+    approval_status: approvalStatus,
     clinical_notes: params.clinicalNotes,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
@@ -1537,6 +1680,79 @@ export function addServiceToTreatmentPlan(params: {
   planServices.push(item);
   setStoredTreatmentPlanServices(planServices);
   return item;
+}
+
+export function updateTreatmentPlanServiceApproval(params: {
+  serviceId: string;
+  approvalStatus: 'direct_coverage' | 'pending_approval' | 'approved' | 'rejected';
+  approvedCoveragePercentage?: number;
+  updatedByUserId?: string;
+  updatedByName?: string;
+  notes?: string;
+}): boolean {
+  const services = getStoredTreatmentPlanServices();
+  const target = services.find((s) => s.id === params.serviceId);
+  if (!target) return false;
+
+  const originalContractedPct = target.coverage_percentage ?? 0;
+  const newApprovedCoveragePct =
+    params.approvedCoveragePercentage !== undefined
+      ? params.approvedCoveragePercentage
+      : (target.approved_coverage_percentage ?? originalContractedPct);
+
+  target.approval_status = params.approvalStatus;
+
+  // Record audit trail if manually adjusted override
+  if (params.approvedCoveragePercentage !== undefined) {
+    target.approved_coverage_percentage = newApprovedCoveragePct;
+    target.approved_copay_percentage = 100 - newApprovedCoveragePct;
+  }
+
+  // Record audit trail if updated by staff or override specified
+  if (
+    (params.approvedCoveragePercentage !== undefined && params.approvedCoveragePercentage !== originalContractedPct) ||
+    params.updatedByName ||
+    params.updatedByUserId ||
+    params.notes
+  ) {
+    target.override_audit = {
+      original_coverage_percentage: originalContractedPct,
+      approved_coverage_percentage: newApprovedCoveragePct,
+      updated_by_user_id: params.updatedByUserId,
+      updated_by_name: params.updatedByName || 'Reception Staff',
+      updated_at: new Date().toISOString(),
+      notes: params.notes,
+    };
+  }
+
+  // Recalculate coverage and copay amounts
+  const effectivePct = params.approvalStatus === 'rejected' ? 0 : (target.approved_coverage_percentage ?? target.coverage_percentage ?? 0);
+  const total = target.total_price || 0;
+  target.insurance_coverage_amount = Math.round(((total * effectivePct) / 100) * 100) / 100;
+  target.patient_copay_amount = Math.round((total - target.insurance_coverage_amount) * 100) / 100;
+  target.updated_at = new Date().toISOString();
+
+  setStoredTreatmentPlanServices(services);
+
+  // Auto-update parent Treatment Plan status if all services are approved or direct coverage
+  if (target.treatment_plan_id) {
+    const allPlans = getStoredTreatmentPlans();
+    const parentPlan = allPlans.find((p) => p.id === target.treatment_plan_id);
+    if (parentPlan) {
+      const planServices = services.filter((s) => s.treatment_plan_id === target.treatment_plan_id);
+      const isAllApproved = planServices.length > 0 && planServices.every((s) => {
+        const st = s.approval_status || (s.requires_approval ? 'pending_approval' : 'direct_coverage');
+        return st === 'approved' || st === 'direct_coverage';
+      });
+      if (isAllApproved && parentPlan.status === 'planned') {
+        parentPlan.status = 'approved';
+        parentPlan.updated_at = new Date().toISOString();
+        setStoredTreatmentPlans(allPlans);
+      }
+    }
+  }
+
+  return true;
 }
 
 export function updateTreatmentServiceStatus(
@@ -1985,12 +2201,32 @@ export function requestConsent(params: {
 
   consents.push(consent);
   setStoredConsentRequests(consents);
+
+  // Emit Patient Consent Required Notification
+  try {
+    createNotification({
+      organization_id: consent.organization_id,
+      recipient_type: 'patient',
+      recipient_id: consent.patient_id,
+      type: 'consent_required',
+      title_ar: 'طلب إقرار موافقة جديد',
+      title_en: 'Consent Form Required',
+      message_ar: `يتطلب ملفك الطبي التوقيع الرقمي على إقرار (${consent.title}).`,
+      message_en: `Consent form (${consent.title}) is awaiting your digital signature.`,
+      related_entity_type: 'consent',
+      related_entity_id: consent.id,
+    });
+  } catch {
+    // ignore
+  }
+
   return { consent, task };
 }
 
 export function signConsentRequest(
   consentId: string,
   signerName: string,
+  signatureDataUrl?: string,
   signatureReference?: string
 ): boolean {
   const consents = getStoredConsentRequests();
@@ -2000,6 +2236,9 @@ export function signConsentRequest(
   target.status = 'signed';
   target.signed_by_name = signerName.trim();
   target.signed_at = new Date().toISOString();
+  if (signatureDataUrl) {
+    target.signature_data_url = signatureDataUrl;
+  }
   target.signature_reference = signatureReference || `SIG-${Date.now()}`;
   target.updated_at = new Date().toISOString();
 
@@ -2013,8 +2252,25 @@ export function signConsentRequest(
   return true;
 }
 
+export function declineConsentRequest(consentId: string): boolean {
+  const consents = getStoredConsentRequests();
+  const target = consents.find((c) => c.id === consentId);
+  if (!target) return false;
+
+  target.status = 'declined';
+  target.updated_at = new Date().toISOString();
+
+  setStoredConsentRequests(consents);
+
+  if (target.reception_task_id) {
+    updateDoctorTaskStatus(target.reception_task_id, 'completed');
+  }
+
+  return true;
+}
+
 /**
- * 12. Follow-up Plans Engine
+ * 12. Follow-up Plans Engine (Recall & Follow-Up Management)
  */
 export function createFollowUpPlan(params: {
   organizationId?: string;
@@ -2022,10 +2278,12 @@ export function createFollowUpPlan(params: {
   doctorId: string;
   branchId?: string;
   visitId?: string;
+  recallType?: RecallType;
   dueDate: string;
   interval: FollowUpInterval;
   reason: string;
   notes?: string;
+  status?: FollowUpStatus;
   createReceptionTask?: boolean;
 }): { followUp: FollowUpPlan; task?: DoctorTask } {
   const plans = getStoredFollowUpPlans();
@@ -2038,10 +2296,11 @@ export function createFollowUpPlan(params: {
   if (params.createReceptionTask !== false) {
     task = createDoctorTask({
       organizationId: orgId,
+      branchId: params.branchId,
       patientId: params.patientId,
       doctorId: params.doctorId,
       taskType: 'schedule_follow_up',
-      title: `جدولة موعد متابعة للمريض بتاريخ ${params.dueDate}`,
+      title: `جدولة موعد استدعاء ومتابعة للمريض بتاريخ ${params.dueDate}`,
       details: params.reason,
       priority: 'normal',
     });
@@ -2055,19 +2314,179 @@ export function createFollowUpPlan(params: {
     doctor_id: params.doctorId,
     branch_id: params.branchId || '11111111-1111-1111-1111-111111111111',
     visit_id: params.visitId,
+    recall_type: params.recallType || 'general_treatment',
     due_date: params.dueDate,
     interval: params.interval,
     reason: params.reason.trim(),
     notes: params.notes?.trim(),
-    status: 'pending',
+    status: params.status || 'scheduled',
     reception_task_id: taskId,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
 
-  plans.push(followUp);
+  plans.unshift(followUp);
   setStoredFollowUpPlans(plans);
+
+  // Send Notification to Patient via existing notification engine
+  try {
+    createNotification({
+      organization_id: orgId,
+      branch_id: followUp.branch_id,
+      recipient_type: 'patient',
+      recipient_id: params.patientId,
+      type: 'appointment_event',
+      title_ar: 'تذكير بموعد متابعة واستدعاء طبي',
+      title_en: 'Recall & Follow-Up Scheduled',
+      message_ar: `تم تحديد موعد متابعة قادم بتاريخ ${params.dueDate}: ${params.reason}`,
+      message_en: `A follow-up recall is scheduled for ${params.dueDate}: ${params.reason}`,
+      related_entity_type: 'appointment',
+      related_entity_id: followUp.id,
+    });
+  } catch {
+    // ignore
+  }
+
   return { followUp, task };
+}
+
+export function updateFollowUpPlanStatus(
+  id: string,
+  newStatus: FollowUpStatus,
+  contactResult?: string,
+  staffId?: string
+): boolean {
+  const plans = getStoredFollowUpPlans();
+  const plan = plans.find((p) => p.id === id);
+  if (!plan) return false;
+
+  plan.status = newStatus;
+  plan.updated_at = new Date().toISOString();
+  if (contactResult) {
+    plan.contact_result = contactResult;
+    plan.last_contacted_at = new Date().toISOString();
+    if (staffId) plan.last_contacted_by_id = staffId;
+  }
+
+  // If completed, update corresponding reception task if exists
+  if (newStatus === 'completed' && plan.reception_task_id) {
+    updateDoctorTaskStatus(plan.reception_task_id, 'completed', staffId);
+  }
+
+  setStoredFollowUpPlans(plans);
+  return true;
+}
+
+export function rescheduleFollowUpPlan(
+  id: string,
+  newDueDate: string,
+  notes?: string,
+  staffId?: string
+): boolean {
+  const plans = getStoredFollowUpPlans();
+  const plan = plans.find((p) => p.id === id);
+  if (!plan) return false;
+
+  plan.rescheduled_date = plan.due_date;
+  plan.due_date = newDueDate;
+  plan.status = 'scheduled';
+  if (notes) {
+    plan.notes = plan.notes ? `${plan.notes}\n[إعادة جدولة]: ${notes}` : notes;
+  }
+  plan.updated_at = new Date().toISOString();
+
+  setStoredFollowUpPlans(plans);
+
+  // Notify patient about rescheduled follow-up
+  try {
+    createNotification({
+      organization_id: plan.organization_id,
+      branch_id: plan.branch_id,
+      recipient_type: 'patient',
+      recipient_id: plan.patient_id,
+      type: 'appointment_event',
+      title_ar: 'تعديل موعد المتابعة والاستدعاء',
+      title_en: 'Follow-Up Rescheduled',
+      message_ar: `تم إعادة جدولة موعد المتابعة الخاص بك إلى ${newDueDate}.`,
+      message_en: `Your follow-up appointment has been rescheduled to ${newDueDate}.`,
+      related_entity_type: 'appointment',
+      related_entity_id: plan.id,
+    });
+  } catch {
+    // ignore
+  }
+
+  return true;
+}
+
+export function recordFollowUpContactResult(
+  id: string,
+  contactResult: string,
+  staffId?: string,
+  nextStatus: FollowUpStatus = 'contacted'
+): boolean {
+  return updateFollowUpPlanStatus(id, nextStatus, contactResult, staffId);
+}
+
+export function getFilteredFollowUpPlans(params: {
+  organizationId?: string;
+  branchId?: string;
+  doctorId?: string;
+  recallType?: string;
+  status?: string;
+  search?: string;
+  startDate?: string;
+  endDate?: string;
+  dueOnly?: boolean;
+}): FollowUpPlan[] {
+  const orgId = params.organizationId || DEFAULT_EGYPT_ORG.id;
+  const plans = getStoredFollowUpPlans().filter((p) => p.organization_id === orgId);
+
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  return plans.filter((p) => {
+    // Branch filter
+    if (params.branchId && params.branchId !== 'all' && p.branch_id !== params.branchId) {
+      return false;
+    }
+    // Doctor filter
+    if (params.doctorId && params.doctorId !== 'all' && p.doctor_id !== params.doctorId) {
+      return false;
+    }
+    // Recall type filter
+    if (params.recallType && params.recallType !== 'all' && p.recall_type !== params.recallType) {
+      return false;
+    }
+    // Status filter
+    if (params.status && params.status !== 'all') {
+      if (params.status === 'due') {
+        const isOverdueOrDue = p.status === 'due' || (p.due_date <= todayStr && (p.status === 'scheduled' || p.status === 'pending'));
+        if (!isOverdueOrDue) return false;
+      } else if (p.status !== params.status) {
+        return false;
+      }
+    }
+    // Due only filter
+    if (params.dueOnly) {
+      const isDue = p.status === 'due' || (p.due_date <= todayStr && p.status !== 'completed' && p.status !== 'cancelled');
+      if (!isDue) return false;
+    }
+    // Date range filter
+    if (params.startDate && p.due_date < params.startDate) return false;
+    if (params.endDate && p.due_date > params.endDate) return false;
+
+    // Search query (matches patient name/code/phone or notes/reason)
+    if (params.search && params.search.trim()) {
+      const q = params.search.toLowerCase().trim();
+      const patientMatch = (p as any).patientName?.toLowerCase().includes(q) ||
+        p.patient_id.toLowerCase().includes(q) ||
+        p.reason.toLowerCase().includes(q) ||
+        p.notes?.toLowerCase().includes(q);
+      if (!patientMatch) return false;
+    }
+
+    return true;
+  });
 }
 
 /**
@@ -2103,6 +2522,26 @@ export function createDoctorTask(params: {
 
   tasks.push(task);
   setStoredDoctorTasks(tasks);
+
+  // Emit Reception Task Notification
+  try {
+    createNotification({
+      organization_id: task.organization_id,
+      branch_id: task.branch_id,
+      recipient_type: 'role',
+      target_role: (task.assigned_to_role as any) || 'receptionist',
+      type: 'reception_task',
+      title_ar: 'مهمة استقبال جديدة',
+      title_en: 'New Reception Task',
+      message_ar: task.title,
+      message_en: task.title,
+      related_entity_type: 'reception_task',
+      related_entity_id: task.id,
+    });
+  } catch {
+    // ignore
+  }
+
   return task;
 }
 
@@ -2396,7 +2835,7 @@ export function uploadInvestigationResult(
 ): boolean {
   return updateInvestigationStatus(
     investigationId,
-    'completed',
+    'results_received',
     resultSummary,
     resultFileUrl || `https://storage.dental-clinic.eg/results/${investigationId}.pdf`
   );
@@ -2450,5 +2889,587 @@ export const createInvestigationRequest = (params: {
   urgency?: InvestigationUrgency;
   notes?: string;
 }) => requestInvestigation(params);
+
+// --- LAB ORDERS STORAGE & FUNCTIONS ---
+const INITIAL_LAB_ORDERS: LabOrder[] = [
+  {
+    id: 'lab_ord_seed_1',
+    organization_id: DEFAULT_EGYPT_ORG.id,
+    patient_id: '1',
+    doctor_id: 'doc_1',
+    branch_id: '11111111-1111-1111-1111-111111111111',
+    service_id: 'srv_1',
+    service_name_ar: 'تركيب تاج زيركون فاخر',
+    service_name_en: 'Monolithic Zirconia Crown',
+    lab_name: 'Cairo Elite Dental Lab (معمل القاهرة للتركيبات)',
+    teeth: ['11', '12'],
+    delivery_date: new Date(Date.now() + 86400000 * 2).toISOString().split('T')[0],
+    required_delivery_date: new Date(Date.now() + 86400000 * 2).toISOString().split('T')[0],
+    shade_notes: 'Vita A2 (Natural translucency)',
+    materials_notes: 'High-translucency Layered Zirconia',
+    notes: 'Urgent delivery requested for patient wedding.',
+    material: 'Zirconia',
+    framework: 'Monolithic',
+    try_in_or_final: 'final',
+    pontic: 'N/A',
+    abutment: 'N/A',
+    tooth_count: 2,
+    product_type: 'Crown',
+    lab_notes: 'Glaze and high polish on facial surface.',
+    doctor_notes: 'Chamfer margin preparation. Check occlusion in centric.',
+    attachment_refs: ['Maxilla_Scan_11_12.stl', 'Shade_Photo_A2.jpg'],
+    delivery_courier_id: 'courier_01',
+    delivery_courier_name: 'Mahmoud Express Courier (مندوب محمود)',
+    delivery_transport_status: 'picked_up',
+    delivery_pickup_time: new Date(Date.now() - 3600000 * 2).toISOString(),
+    pickup_location: 'Cairo Elite Dental Lab (معمل القاهرة للتركيبات)',
+    destination_branch_name: 'Cairo Central Branch (فرع القاهرة الرئيسي)',
+    delivery_notes: 'Case picked up in protective thermal container.',
+    status: 'sent_to_lab',
+    created_at: new Date(Date.now() - 86400000 * 3).toISOString(),
+    updated_at: new Date(Date.now() - 86400000 * 3).toISOString(),
+  },
+  {
+    id: 'lab_ord_seed_2',
+    organization_id: DEFAULT_EGYPT_ORG.id,
+    patient_id: '2',
+    doctor_id: 'doc_2',
+    branch_id: '11111111-1111-1111-1111-111111111111',
+    service_id: 'srv_2',
+    service_name_ar: 'عدسات إيماكس تجميلية (Veneers)',
+    service_name_en: 'IPS e.max Press Veneer',
+    lab_name: 'Alpha Dental Ceramics (المعمل الفني المتخصص)',
+    teeth: ['11', '21', '12', '22'],
+    delivery_date: new Date().toISOString().split('T')[0],
+    required_delivery_date: new Date().toISOString().split('T')[0],
+    shade_notes: 'Bleach 2 (BL2 HT)',
+    materials_notes: 'Lithium Disilicate (IPS e.max)',
+    notes: 'Special characterization on distal margin.',
+    material: 'E-Max / Lithium Disilicate',
+    framework: 'Layered Porcelain',
+    try_in_or_final: 'try_in',
+    pontic: 'N/A',
+    abutment: 'N/A',
+    tooth_count: 4,
+    product_type: 'Veneer',
+    lab_notes: 'Minimal thickness 0.5mm required.',
+    doctor_notes: 'Bisque bake try-in required prior to final stain.',
+    attachment_refs: ['Smile_Design_3D.ply'],
+    delivery_courier_id: 'courier_01',
+    delivery_courier_name: 'Mahmoud Express Courier (مندوب محمود)',
+    delivery_transport_status: 'in_transit',
+    delivery_pickup_time: new Date(Date.now() - 3600000 * 4).toISOString(),
+    pickup_location: 'Alpha Dental Ceramics (المعمل الفني المتخصص)',
+    destination_branch_name: 'Cairo Central Branch (فرع القاهرة الرئيسي)',
+    delivery_notes: 'En route via motorcycle dispatch.',
+    status: 'in_production',
+    created_at: new Date(Date.now() - 86400000 * 4).toISOString(),
+    updated_at: new Date(Date.now() - 86400000 * 1).toISOString(),
+  },
+  {
+    id: 'lab_ord_seed_3',
+    organization_id: DEFAULT_EGYPT_ORG.id,
+    patient_id: '3',
+    doctor_id: 'doc_1',
+    branch_id: '22222222-2222-2222-2222-222222222222',
+    service_id: 'srv_3',
+    service_name_ar: 'دعامة زراعة أسنان مخصصة تيتانيوم',
+    service_name_en: 'Custom Titanium Implant Abutment',
+    lab_name: 'Alexandria Precision Lab',
+    teeth: ['36'],
+    delivery_date: new Date(Date.now() + 86400000 * 4).toISOString().split('T')[0],
+    required_delivery_date: new Date(Date.now() + 86400000 * 4).toISOString().split('T')[0],
+    shade_notes: 'A3',
+    materials_notes: 'Grade 5 Titanium + Screw-retained Crown',
+    notes: 'Internal hex 3.5mm connection.',
+    material: 'Titanium',
+    framework: 'Cast Metal',
+    try_in_or_final: 'final',
+    pontic: 'N/A',
+    abutment: 'Custom Titanium',
+    tooth_count: 1,
+    product_type: 'Implant Crown',
+    lab_notes: 'Torque 35Ncm interface validation.',
+    doctor_notes: 'Screw-retained with occlusal access hole.',
+    attachment_refs: ['Implant_Scan_Body_36.stl'],
+    delivery_courier_id: 'courier_02',
+    delivery_courier_name: 'Tarek Logistics (مندوب طارق)',
+    delivery_transport_status: 'assigned',
+    pickup_location: 'Alexandria Precision Lab',
+    destination_branch_name: 'Alexandria Branch (فرع الإسكندرية)',
+    status: 'sent_to_lab',
+    created_at: new Date(Date.now() - 86400000 * 2).toISOString(),
+    updated_at: new Date(Date.now() - 86400000 * 2).toISOString(),
+  },
+  {
+    id: 'lab_ord_seed_4',
+    organization_id: DEFAULT_EGYPT_ORG.id,
+    patient_id: '4',
+    doctor_id: 'doc_3',
+    branch_id: '11111111-1111-1111-1111-111111111111',
+    service_id: 'srv_4',
+    service_name_ar: 'جسر بورسلين على معدن (PFM Bridge)',
+    service_name_en: 'PFM Dental Bridge (3 units)',
+    lab_name: 'Nile CAD/CAM Digital Studio',
+    teeth: ['45', '46', '47'],
+    delivery_date: new Date(Date.now() - 86400000 * 1).toISOString().split('T')[0],
+    required_delivery_date: new Date(Date.now() - 86400000 * 1).toISOString().split('T')[0],
+    shade_notes: 'A3.5',
+    materials_notes: 'Cobalt-Chrome alloy base with Noritake porcelain',
+    notes: 'Received at reception desk.',
+    material: 'PFM',
+    framework: 'CoCr',
+    try_in_or_final: 'final',
+    pontic: 'Modified Ridge Lap',
+    abutment: 'N/A',
+    tooth_count: 3,
+    product_type: 'Bridge',
+    lab_notes: 'Hypoallergenic alloy casting used.',
+    doctor_notes: 'Convex pontic tissue contact.',
+    attachment_refs: ['Lower_Right_Bridge_Preparation.stl'],
+    delivery_courier_id: 'courier_01',
+    delivery_courier_name: 'Mahmoud Express Courier (مندوب محمود)',
+    delivery_transport_status: 'delivered',
+    delivery_pickup_time: new Date(Date.now() - 86400000 * 1 - 7200000).toISOString(),
+    delivery_delivered_time: new Date(Date.now() - 86400000 * 1).toISOString(),
+    pickup_location: 'Nile CAD/CAM Digital Studio',
+    destination_branch_name: 'Cairo Central Branch (فرع القاهرة الرئيسي)',
+    delivery_notes: 'Delivered directly to reception desk.',
+    status: 'received',
+    created_at: new Date(Date.now() - 86400000 * 5).toISOString(),
+    updated_at: new Date(Date.now() - 86400000 * 1).toISOString(),
+  }
+];
+
+export function getStoredLabOrders(patientId?: string): LabOrder[] {
+  const raw = safeStorage.getItem(CLINICAL_STORAGE_KEYS.LAB_ORDERS);
+  let list: LabOrder[] = [];
+  if (!raw) {
+    list = INITIAL_LAB_ORDERS;
+    safeStorage.setItem(CLINICAL_STORAGE_KEYS.LAB_ORDERS, JSON.stringify(list));
+  } else {
+    try {
+      list = JSON.parse(raw);
+    } catch {
+      list = INITIAL_LAB_ORDERS;
+    }
+  }
+  if (patientId) {
+    return list.filter((item) => item.patient_id === patientId);
+  }
+  return list;
+}
+
+export function setStoredLabOrders(orders: LabOrder[]): void {
+  safeStorage.setItem(CLINICAL_STORAGE_KEYS.LAB_ORDERS, JSON.stringify(orders));
+}
+
+export function createLabOrder(params: {
+  patientId: string;
+  doctorId: string;
+  branchId?: string;
+  organizationId?: string;
+  treatmentPlanId?: string;
+  treatmentServiceId?: string;
+  serviceId: string;
+  serviceNameAr?: string;
+  serviceNameEn?: string;
+  labName?: string;
+  teeth: string[];
+  deliveryDate: string;
+  requiredDeliveryDate?: string;
+  shadeNotes?: string;
+  materialsNotes?: string;
+  notes?: string;
+  material?: string;
+  framework?: string;
+  tryInOrFinal?: import('../types/clinical').LabOrderTryInOrFinal;
+  pontic?: string;
+  abutment?: string;
+  toothCount?: number;
+  productType?: string;
+  labNotes?: string;
+  doctorNotes?: string;
+  attachmentRefs?: string[];
+}): LabOrder {
+  const orders = getStoredLabOrders();
+  const effectiveDeliveryDate = params.requiredDeliveryDate || params.deliveryDate;
+  const effectiveDoctorNotes = params.doctorNotes || params.notes;
+
+  const newOrder: LabOrder = {
+    id: `lab_ord_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+    organization_id: params.organizationId || DEFAULT_EGYPT_ORG.id,
+    patient_id: params.patientId,
+    doctor_id: params.doctorId,
+    branch_id: params.branchId || '11111111-1111-1111-1111-111111111111',
+    treatment_plan_id: params.treatmentPlanId,
+    treatment_service_id: params.treatmentServiceId,
+    service_id: params.serviceId,
+    service_name_ar: params.serviceNameAr || 'طلب عمل معملي',
+    service_name_en: params.serviceNameEn || 'Dental Laboratory Work Order',
+    lab_name: params.labName,
+    teeth: params.teeth,
+    delivery_date: effectiveDeliveryDate,
+    required_delivery_date: effectiveDeliveryDate,
+    shade_notes: params.shadeNotes,
+    materials_notes: params.materialsNotes || params.material,
+    notes: effectiveDoctorNotes,
+
+    material: params.material || params.materialsNotes || 'Zirconia',
+    framework: params.framework || 'Monolithic',
+    try_in_or_final: params.tryInOrFinal || 'final',
+    pontic: params.pontic || 'N/A',
+    abutment: params.abutment || 'N/A',
+    tooth_count: params.toothCount ?? (params.teeth.length > 0 ? params.teeth.length : 1),
+    product_type: params.productType || 'Crown',
+    lab_notes: params.labNotes || '',
+    doctor_notes: effectiveDoctorNotes || '',
+    attachment_refs: params.attachmentRefs || [],
+
+    status: 'sent_to_lab',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+
+  orders.unshift(newOrder);
+  setStoredLabOrders(orders);
+  return newOrder;
+}
+
+export function updateLabOrderStatus(orderId: string, status: LabOrderStatus): boolean {
+  const orders = getStoredLabOrders();
+  const target = orders.find((o) => o.id === orderId);
+  if (!target) return false;
+
+  target.status = status;
+  target.updated_at = new Date().toISOString();
+  setStoredLabOrders(orders);
+  return true;
+}
+
+export function updateLabOrderNotes(orderId: string, labNotes: string): boolean {
+  const orders = getStoredLabOrders();
+  const target = orders.find((o) => o.id === orderId);
+  if (!target) return false;
+
+  target.lab_notes = labNotes;
+  target.updated_at = new Date().toISOString();
+  setStoredLabOrders(orders);
+  return true;
+}
+
+export function updateDeliveryTransportStatus(
+  orderId: string,
+  transportStatus: import('../types/clinical').DeliveryTransportStatus,
+  deliveryNotes?: string
+): boolean {
+  const orders = getStoredLabOrders();
+  const target = orders.find((o) => o.id === orderId);
+  if (!target) return false;
+
+  target.delivery_transport_status = transportStatus;
+  if (deliveryNotes !== undefined) {
+    target.delivery_notes = deliveryNotes;
+  }
+
+  if (transportStatus === 'picked_up' && !target.delivery_pickup_time) {
+    target.delivery_pickup_time = new Date().toISOString();
+  } else if (transportStatus === 'delivered') {
+    target.delivery_delivered_time = new Date().toISOString();
+    // Auto-sync LabOrderStatus to delivered/received
+    target.status = 'delivered';
+  }
+
+  target.updated_at = new Date().toISOString();
+  setStoredLabOrders(orders);
+  return true;
+}
+
+export function assignDeliveryCourier(
+  orderId: string,
+  courierId: string,
+  courierName: string,
+  pickupLocation?: string,
+  destinationBranchName?: string
+): boolean {
+  const orders = getStoredLabOrders();
+  const target = orders.find((o) => o.id === orderId);
+  if (!target) return false;
+
+  target.delivery_courier_id = courierId;
+  target.delivery_courier_name = courierName;
+  target.delivery_transport_status = target.delivery_transport_status || 'assigned';
+  target.pickup_location = pickupLocation || target.lab_name || 'Main Dental Lab';
+  target.destination_branch_name = destinationBranchName || 'Cairo Central Branch';
+
+  target.updated_at = new Date().toISOString();
+  setStoredLabOrders(orders);
+  return true;
+}
+
+// ----------------------------------------------------
+// Product / Lab Order Chat Authorization & Storage
+// ----------------------------------------------------
+
+export function isUserAuthorizedForLabOrderChat(
+  roleKey: string,
+  userOrgId: string,
+  labOrderOrgId: string
+): boolean {
+  // Organization isolation
+  if (userOrgId !== labOrderOrgId) {
+    return false;
+  }
+
+  // Security: Patient and Delivery User are explicitly forbidden from internal lab chat
+  if (roleKey === 'patient' || roleKey === 'delivery_user') {
+    return false;
+  }
+
+  const authorizedRoles = [
+    'doctor',
+    'lab_user',
+    'prosthetic_coordinator',
+    'receptionist',
+    'center_manager',
+    'branch_manager',
+  ];
+
+  return authorizedRoles.includes(roleKey);
+}
+
+const DEFAULT_LAB_CHAT_MESSAGES: LabOrderChatMessage[] = [
+  {
+    id: 'lab_msg_seed_1',
+    lab_order_id: 'lab_ord_seed_1',
+    organization_id: DEFAULT_EGYPT_ORG.id,
+    sender_id: 'doc_cairo_1',
+    sender_name: 'Dr. Ahmed El-Sayed (د. أحمد السيد)',
+    sender_role: 'doctor',
+    message: 'Please double check shade A2 near cervical margin. 0.5mm chamfer preparation.',
+    topic: 'shade',
+    attachment_ref: 'Shade_Photo_A2.jpg',
+    created_at: new Date(Date.now() - 86400000 * 2).toISOString(),
+    read_by: ['doc_cairo_1', 'tech_cairo_lab_1'],
+  },
+  {
+    id: 'lab_msg_seed_2',
+    lab_order_id: 'lab_ord_seed_1',
+    organization_id: DEFAULT_EGYPT_ORG.id,
+    sender_id: 'tech_cairo_lab_1',
+    sender_name: 'Eng. Mahmoud Lab Tech (م. محمود معمل)',
+    sender_role: 'lab_user',
+    message: 'Noted doctor. High translucent Zirconia block selected. Ready for bisque bake try-in.',
+    topic: 'material',
+    attachment_ref: 'Maxilla_Scan_11_12.stl',
+    created_at: new Date(Date.now() - 86400000 * 1).toISOString(),
+    read_by: ['tech_cairo_lab_1'],
+  },
+  {
+    id: 'lab_msg_seed_3',
+    lab_order_id: 'lab_ord_seed_2',
+    organization_id: DEFAULT_EGYPT_ORG.id,
+    sender_id: 'doc_cairo_1',
+    sender_name: 'Dr. Ahmed El-Sayed (د. أحمد السيد)',
+    sender_role: 'doctor',
+    message: 'Veneers #11-#22: Requesting 0.3mm facial reduction design for try-in stage.',
+    topic: 'design',
+    created_at: new Date(Date.now() - 86400000 * 3).toISOString(),
+    read_by: ['doc_cairo_1'],
+  },
+];
+
+export function getStoredLabOrderChatMessages(): LabOrderChatMessage[] {
+  const raw = safeStorage.getItem(CLINICAL_STORAGE_KEYS.LAB_ORDER_CHAT_MESSAGES);
+  if (!raw) {
+    safeStorage.setItem(
+      CLINICAL_STORAGE_KEYS.LAB_ORDER_CHAT_MESSAGES,
+      JSON.stringify(DEFAULT_LAB_CHAT_MESSAGES)
+    );
+    return DEFAULT_LAB_CHAT_MESSAGES;
+  }
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return DEFAULT_LAB_CHAT_MESSAGES;
+  }
+}
+
+export function setStoredLabOrderChatMessages(messages: LabOrderChatMessage[]): void {
+  safeStorage.setItem(
+    CLINICAL_STORAGE_KEYS.LAB_ORDER_CHAT_MESSAGES,
+    JSON.stringify(messages)
+  );
+}
+
+export function getLabOrderChatMessages(
+  labOrderId: string,
+  userRole: string,
+  userOrgId: string
+): LabOrderChatMessage[] {
+  const orders = getStoredLabOrders();
+  const targetOrder = orders.find((o) => o.id === labOrderId);
+  if (!targetOrder) return [];
+
+  if (!isUserAuthorizedForLabOrderChat(userRole, userOrgId, targetOrder.organization_id)) {
+    return [];
+  }
+
+  const allMessages = getStoredLabOrderChatMessages();
+  return allMessages
+    .filter(
+      (m) =>
+        m.lab_order_id === labOrderId &&
+        m.organization_id === targetOrder.organization_id
+    )
+    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+}
+
+export function addLabOrderChatMessage(params: {
+  lab_order_id: string;
+  organization_id: string;
+  sender_id: string;
+  sender_name: string;
+  sender_role: string;
+  message: string;
+  topic?: LabOrderChatTopic;
+  attachment_ref?: string;
+}): LabOrderChatMessage | null {
+  const {
+    lab_order_id,
+    organization_id,
+    sender_id,
+    sender_name,
+    sender_role,
+    message,
+    topic,
+    attachment_ref,
+  } = params;
+
+  const orders = getStoredLabOrders();
+  const targetOrder = orders.find((o) => o.id === lab_order_id);
+  if (!targetOrder) return null;
+
+  if (!isUserAuthorizedForLabOrderChat(sender_role, organization_id, targetOrder.organization_id)) {
+    return null;
+  }
+
+  const newMessage: LabOrderChatMessage = {
+    id: `lab_msg_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+    lab_order_id,
+    organization_id,
+    sender_id,
+    sender_name,
+    sender_role,
+    message: message.trim(),
+    topic: topic || 'general',
+    attachment_ref: attachment_ref?.trim() || undefined,
+    created_at: new Date().toISOString(),
+    read_by: [sender_id],
+  };
+
+  const allMessages = getStoredLabOrderChatMessages();
+  allMessages.push(newMessage);
+  setStoredLabOrderChatMessages(allMessages);
+
+  return newMessage;
+}
+
+export function markLabOrderMessagesAsRead(
+  labOrderId: string,
+  userId: string,
+  userRole: string,
+  userOrgId: string
+): boolean {
+  const orders = getStoredLabOrders();
+  const targetOrder = orders.find((o) => o.id === labOrderId);
+  if (!targetOrder) return false;
+
+  if (!isUserAuthorizedForLabOrderChat(userRole, userOrgId, targetOrder.organization_id)) {
+    return false;
+  }
+
+  const allMessages = getStoredLabOrderChatMessages();
+  let updated = false;
+
+  allMessages.forEach((m) => {
+    if (m.lab_order_id === labOrderId && m.organization_id === targetOrder.organization_id) {
+      if (!m.read_by) m.read_by = [];
+      if (!m.read_by.includes(userId)) {
+        m.read_by.push(userId);
+        updated = true;
+      }
+    }
+  });
+
+  if (updated) {
+    setStoredLabOrderChatMessages(allMessages);
+  }
+  return true;
+}
+
+export function getUnreadLabChatMessageCount(labOrderId: string, userId: string): number {
+  const allMessages = getStoredLabOrderChatMessages();
+  return allMessages.filter(
+    (m) => m.lab_order_id === labOrderId && (!m.read_by || !m.read_by.includes(userId))
+  ).length;
+}
+
+export function getStoredLabOrderChatThreads(): LabOrderChatThread[] {
+  const raw = safeStorage.getItem(CLINICAL_STORAGE_KEYS.LAB_ORDER_CHAT_THREADS);
+  if (!raw) return [];
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return [];
+  }
+}
+
+export function setStoredLabOrderChatThreads(threads: LabOrderChatThread[]): void {
+  safeStorage.setItem(
+    CLINICAL_STORAGE_KEYS.LAB_ORDER_CHAT_THREADS,
+    JSON.stringify(threads)
+  );
+}
+
+export function getLabOrderChatStatus(labOrderId: string): LabOrderChatStatus {
+  const threads = getStoredLabOrderChatThreads();
+  const target = threads.find((t) => t.lab_order_id === labOrderId);
+  return target ? target.status : 'open';
+}
+
+export function updateLabOrderChatStatus(
+  labOrderId: string,
+  status: LabOrderChatStatus,
+  userRole: string,
+  userOrgId: string
+): boolean {
+  const orders = getStoredLabOrders();
+  const targetOrder = orders.find((o) => o.id === labOrderId);
+  if (!targetOrder) return false;
+
+  if (!isUserAuthorizedForLabOrderChat(userRole, userOrgId, targetOrder.organization_id)) {
+    return false;
+  }
+
+  const threads = getStoredLabOrderChatThreads();
+  const existingIndex = threads.findIndex((t) => t.lab_order_id === labOrderId);
+  if (existingIndex >= 0) {
+    threads[existingIndex].status = status;
+    threads[existingIndex].updated_at = new Date().toISOString();
+  } else {
+    threads.push({
+      lab_order_id: labOrderId,
+      organization_id: targetOrder.organization_id,
+      status,
+      updated_at: new Date().toISOString(),
+    });
+  }
+
+  setStoredLabOrderChatThreads(threads);
+  return true;
+}
+
+
 
 

@@ -150,3 +150,6 @@ export * from './receptionAndBilling';
 // Phase 4: Doctor Clinical Workspace, Dental Chart, Treatment Plans, Notes & Orders
 export * from './clinical';
 
+// Phase 9: Notifications Foundation
+export * from './notification';
+
