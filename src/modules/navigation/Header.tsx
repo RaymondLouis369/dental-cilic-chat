@@ -1,10 +1,12 @@
-import React from 'react';
-import { LogOut, Globe, Shield, MapPin, Building, ArrowRightLeft } from 'lucide-react';
+import React, { useState } from 'react';
+import { LogOut, Globe, Shield, MapPin, Building, ArrowRightLeft, ShieldAlert } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { useLanguage } from '../i18n/LanguageContext';
 import { PWAInstallButton } from '../pwa/PWAInstallButton';
 import { RoleBadge } from './RoleBadge';
 import { NotificationBell } from '../../components/NotificationBell';
+import { HumanEscalationsModal } from '../../components/HumanEscalationsModal';
+import { isAuthorizedStaffRecipient } from '../../lib/escalationStorage';
 
 interface HeaderProps {
   onSwitchToPatient?: () => void;
@@ -12,9 +14,12 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({ onSwitchToPatient }) => {
   const { session, logout, isOrgWideManager, accessibleBranches } = useAuth();
-  const { t, toggleLanguage } = useLanguage();
+  const { t, language, toggleLanguage } = useLanguage();
+  const [isEscalationsOpen, setIsEscalationsOpen] = useState(false);
 
   if (!session) return null;
+
+  const isStaffEscalationAuthorized = isAuthorizedStaffRecipient(session.role.key);
 
   return (
     <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
@@ -46,8 +51,22 @@ export const Header: React.FC<HeaderProps> = ({ onSwitchToPatient }) => {
           </div>
         </div>
 
-        {/* User profile, Role, Notification Bell, PWA Install & Language switcher */}
+        {/* User profile, Role, Notification Bell, Human Escalation, PWA Install & Language switcher */}
         <div className="flex items-center gap-3">
+          {isStaffEscalationAuthorized && (
+            <button
+              onClick={() => setIsEscalationsOpen(true)}
+              id="btn-header-human-escalations"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 text-xs font-bold transition shadow-2xs"
+              title={language === 'ar' ? 'تصعيدات المرضى والاستفسارات المباشرة' : 'Human Escalations'}
+            >
+              <ShieldAlert className="w-3.5 h-3.5 text-amber-600" />
+              <span className="hidden sm:inline">
+                {language === 'ar' ? 'التصعيدات المباشرة' : 'Escalations'}
+              </span>
+            </button>
+          )}
+
           <NotificationBell />
 
           <PWAInstallButton />
@@ -92,6 +111,15 @@ export const Header: React.FC<HeaderProps> = ({ onSwitchToPatient }) => {
           </button>
         </div>
       </div>
+
+      {isEscalationsOpen && (
+        <HumanEscalationsModal
+          isOpen={isEscalationsOpen}
+          onClose={() => setIsEscalationsOpen(false)}
+          staffProfile={session.profile}
+          accessibleBranchIds={accessibleBranches.map((b) => b.id)}
+        />
+      )}
     </header>
   );
 };

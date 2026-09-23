@@ -57,6 +57,7 @@ import {
 } from '../lib/receptionAndBillingStorage';
 import { Service } from '../types/receptionAndBilling';
 import { Phase09_1AcceptanceTestRunner } from './Phase09_1AcceptanceTestRunner';
+import { Phase10_3AcceptanceTestRunner } from './Phase10_3AcceptanceTestRunner';
 
 interface TestResult {
   id: number;
@@ -1526,6 +1527,9 @@ export const AcceptanceTestRunner: React.FC = () => {
 
       {/* Phase 09.1 Acceptance Test Runner */}
       <Phase09_1AcceptanceTestRunner />
+
+      {/* Phase 10.3 Human Escalation Acceptance Test Runner */}
+      <Phase10_3AcceptanceTestRunner />
     </div>
   );
 };

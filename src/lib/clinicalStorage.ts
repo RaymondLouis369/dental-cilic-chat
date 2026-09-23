@@ -32,6 +32,8 @@ import {
   ConsentStatus,
   FollowUpPlan,
   FollowUpInterval,
+  RecallType,
+  FollowUpStatus,
   DoctorTask,
   DoctorTaskType,
   DoctorTaskStatus,
@@ -2280,7 +2282,7 @@ export function createFollowUpPlan(params: {
   visitId?: string;
   recallType?: RecallType;
   dueDate: string;
-  interval: FollowUpInterval;
+  interval?: FollowUpInterval;
   reason: string;
   notes?: string;
   status?: FollowUpStatus;
@@ -2316,7 +2318,7 @@ export function createFollowUpPlan(params: {
     visit_id: params.visitId,
     recall_type: params.recallType || 'general_treatment',
     due_date: params.dueDate,
-    interval: params.interval,
+    interval: params.interval || 'custom',
     reason: params.reason.trim(),
     notes: params.notes?.trim(),
     status: params.status || 'scheduled',
@@ -2454,8 +2456,20 @@ export function getFilteredFollowUpPlans(params: {
       return false;
     }
     // Recall type filter
-    if (params.recallType && params.recallType !== 'all' && p.recall_type !== params.recallType) {
-      return false;
+    if (params.recallType && params.recallType !== 'all') {
+      const target = params.recallType as string;
+      const actual = p.recall_type as string;
+      const isMatch =
+        actual === target ||
+        (target === 'post_operative' && actual === 'post_op') ||
+        (target === 'post_op' && actual === 'post_operative') ||
+        (target === 'implant' && actual === 'implant_followup') ||
+        (target === 'implant_followup' && actual === 'implant') ||
+        (target === 'prosthetic' && actual === 'prosthetic_followup') ||
+        (target === 'prosthetic_followup' && actual === 'prosthetic') ||
+        (target === 'orthodontic' && actual === 'ortho_followup') ||
+        (target === 'ortho_followup' && actual === 'orthodontic');
+      if (!isMatch) return false;
     }
     // Status filter
     if (params.status && params.status !== 'all') {

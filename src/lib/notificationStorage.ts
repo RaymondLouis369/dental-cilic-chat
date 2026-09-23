@@ -415,6 +415,8 @@ export function createNotification(params: CreateNotificationParams): Notificati
   return newNotif;
 }
 
+export const emitNotification = createNotification;
+
 /**
  * Creates a new notification with explicit async Supabase persistence awaiting
  */

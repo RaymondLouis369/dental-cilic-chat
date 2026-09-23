@@ -1,5 +1,5 @@
 # Dental Clinic & Dental Center Management Platform — Egypt
-## Phases 01–08: Foundation, Identity, Operations, Clinical, Insurance, Consents, Lab QR Logistics, Billing, Commissions, Supplier Management & Manager Financial Dashboard
+## Phases 01–09: Foundation, Identity, Operations, Clinical, Insurance, Consents, Lab QR Logistics, Billing, Commissions, Supplier Management, Manager Financial Dashboard, Centralized Notifications, Recall/Follow-up & Complaints Management
 
 A modern, cloud-native, multi-tenant Software-as-a-Service (SaaS) application built for single dental clinics and multi-branch dental centers operating in the **Arab Republic of Egypt**.
 
@@ -84,6 +84,25 @@ A modern, cloud-native, multi-tenant Software-as-a-Service (SaaS) application bu
 5. **Multi-Filter Dashboard Controls & CSV Export:** Interactive filters by Branch, Doctor, Service Category, Service, Insurance Company, Time Period, Payment Status, and Payer Type, with one-click UTF-8 BOM CSV financial report export.
 6. **Multi-Tenant Isolation & Manager RBAC:** Strict `organization_id` and `branch_id` scoping with role-gated administrative write operations for Center Managers and Branch Managers.
 
+### Phase 09: Centralized Notifications & Recall/Follow-up Management
+
+#### Phase 09.1: Centralized Notifications Foundation
+1. **Multi-Role & Multi-Branch Notification Engine:** Real-time and persistent informational alerts for all 7 staff roles and patient portal accounts.
+2. **Event-Driven Workflow Triggers:** Automated triggers for reception tasks, digital consent requests, appointment bookings, and invoice payments.
+
+#### Phase 09.2: Recall & Follow-up Management System
+1. **Standardized Recall Types & Lifecycle:** Structured follow-ups across 7 dental recall types (`post_operative`, `implant`, `suture_removal`, `cleaning_hygiene`, `prosthetic`, `orthodontic`, `general_treatment`) with status transitions (`scheduled`, `due`, `contacted`, `completed`, `missed`, `cancelled`).
+2. **Reception Recall Management Dashboard (`RecallFollowUpManagementModal.tsx`):** Front-desk operational tool to track due/overdue recalls, log patient contact outcomes, reschedule target dates, and mark follow-ups as completed with multi-criteria filtering.
+3. **Doctor Due/Overdue Recalls (`DoctorDashboardView.tsx` & `FollowUpModal.tsx`):** In-encounter follow-up scheduling and a dedicated Doctor Dashboard card for due/overdue recalls with direct patient file access.
+4. **Patient Portal Recall Reminders (`PatientHome.tsx`):** Patient home screen card showing upcoming recall appointments, due checkup reminders, and rescheduled dates.
+5. **Seamless Task & Notification Handoffs:** Auto-generates reception action items (`task_type: 'schedule_follow_up'`) and notification alerts with strict multi-tenant (`organization_id`) and branch (`branch_id`) isolation.
+
+#### Phase 09.3: Complaints & Support Tickets Workflows
+1. **Support Ticket Lifecycle (`ComplaintsManagementModal.tsx`, `PatientSupportTickets.tsx`):** End-to-end support ticket workflow supporting creation by patients or reception staff, assignment, role-based escalation, resolution, and closing.
+2. **Categorization & Escalation Engine:** 8 ticket categories (`Appointment`, `Reception`, `Billing`, `Insurance`, `Clinical`, `Lab/Prosthetics`, `Medication`, `Other`) with automatic escalation routing (Clinical/Medication $\rightarrow$ Doctor, Billing/Insurance $\rightarrow$ Center Manager) and priority levels (`normal`, `urgent`, `critical`).
+3. **Internal Notes Privacy & Patient Safeguards (`complaintStorage.ts`):** Internal staff notes (`is_internal: true`) strictly excluded from patient portal views via `forPatient: true` filtering.
+4. **Automated Complaint Notifications & Task Handoffs:** Emits real-time notifications for ticket creation, replies, escalations, and resolution with linked urgent Reception Tasks for critical tickets.
+
 ---
 
 ## Quick Start
@@ -103,7 +122,7 @@ The application will be running on `http://localhost:3000`.
 ```bash
 npm test
 ```
-Executes all 119 automated tests across 18 test suites. Or open the built-in interactive **Acceptance Test Runner** tab in the top navigation bar.
+Executes all 143 automated tests across 21 test suites. Or open the built-in interactive **Acceptance Test Runner** tab in the top navigation bar.
 
 ### 4. Production Build & Linting
 ```bash
@@ -119,6 +138,7 @@ SQL migration files are located in `/supabase/migrations/`:
 - `20260912000001_initial_dental_saas_schema.sql`: Phase 1 core schema, constraints, RLS helper functions, and policies.
 - `20260912000002_seed_egypt_demo_data.sql`: Seed data for the Egyptian dental center, branches, roles, permissions, and staff accounts.
 - `20260912000003_phase2_patient_identity.sql`: Phase 2 patient identity, family structures, and accounts.
+- `20260912000009_phase9_1_1_notifications_schema.sql`: Phase 09.1.1 notifications schema & RLS policies.
 
 To apply migrations to your Supabase project:
 ```bash
@@ -171,4 +191,6 @@ For in-depth architectural breakdowns, database schema descriptions, security co
 - [`IMPLEMENTATION_NOTES_PHASE_08_1.md`](./IMPLEMENTATION_NOTES_PHASE_08_1.md) — Supplier / Vendor Management & Egyptian Dental Categorization
 - [`IMPLEMENTATION_NOTES_PHASE_08.md`](./IMPLEMENTATION_NOTES_PHASE_08.md) — Manager Dashboard, Service Configuration, Supplier Management & Financial Analytics
 - [`IMPLEMENTATION_NOTES_PHASE_09_1.md`](./IMPLEMENTATION_NOTES_PHASE_09_1.md) — Centralized Notifications Foundation, Multi-Role & Event Triggers
+- [`IMPLEMENTATION_NOTES_PHASE_09_2.md`](./IMPLEMENTATION_NOTES_PHASE_09_2.md) — Recall & Follow-up Management System, Workspaces, Contact Logging & Task Handoffs
+- [`IMPLEMENTATION_NOTES_PHASE_09.md`](./IMPLEMENTATION_NOTES_PHASE_09.md) — Phase 09 Final Summary: Notifications Engine, Recall/Follow-up & Complaints Management Workflows
 

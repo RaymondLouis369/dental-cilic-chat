@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Language, Direction, translations } from './translations';
+import { safeStorage } from '../../lib/storage';
 
 interface LanguageContextType {
   language: Language;
@@ -15,9 +16,11 @@ const LanguageContext = createContext<LanguageContextType | undefined>(undefined
 export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Egypt default: Arabic ('ar')
   const [language, setLanguageState] = useState<Language>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('dental_saas_lang') as Language;
+    try {
+      const saved = safeStorage.getItem('dental_saas_lang') as Language;
       if (saved === 'ar' || saved === 'en') return saved;
+    } catch {
+      // ignore
     }
     return 'ar';
   });
@@ -29,8 +32,10 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       document.documentElement.lang = language;
       document.documentElement.dir = direction;
     }
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem('dental_saas_lang', language);
+    try {
+      safeStorage.setItem('dental_saas_lang', language);
+    } catch {
+      // ignore
     }
   }, [language, direction]);
 

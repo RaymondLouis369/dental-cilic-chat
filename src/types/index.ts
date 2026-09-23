@@ -150,6 +150,10 @@ export * from './receptionAndBilling';
 // Phase 4: Doctor Clinical Workspace, Dental Chart, Treatment Plans, Notes & Orders
 export * from './clinical';
 
-// Phase 9: Notifications Foundation
+// Phase 9: Notifications & Support Tickets
 export * from './notification';
+export * from './complaints';
+
+// Phase 10.3: Human Escalation Workflow
+export * from './escalation';
 

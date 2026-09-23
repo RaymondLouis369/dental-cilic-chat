@@ -25,28 +25,22 @@ import {
 } from 'lucide-react';
 
 interface PatientHomeProps {
-  onNavigate: (tab: 'profile' | 'digitalCard' | 'family' | 'notifications' | 'settings') => void;
+  onNavigate: (tab: 'profile' | 'digitalCard' | 'family' | 'notifications' | 'tickets' | 'aiChat' | 'settings') => void;
 }
 
 export const PatientHome: React.FC<PatientHomeProps> = ({ onNavigate }) => {
   const { t, language } = useLanguage();
   const { session, selectPatientContext } = usePatientAuth();
 
-  if (!session) return null;
-
-  const patient = session.selectedPatient;
-  const authPatient = session.authenticatedPatient;
-  const isWard = authPatient.id !== patient.id;
-  const age = calculateAge(patient.date_of_birth);
-  const ageGroup = getAgeGroup(patient.date_of_birth);
-  const isRtl = language === 'ar';
-  const ChevronIcon = isRtl ? ChevronLeft : ChevronRight;
+  const patient = session?.selectedPatient;
+  const authPatient = session?.authenticatedPatient;
 
   const staff = useMemo(() => getStoredStaffUsers(), []);
   const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
 
   // Fetch upcoming/due follow-ups for this patient
   const upcomingFollowUps = useMemo(() => {
+    if (!patient) return [];
     const all = getStoredFollowUpPlans();
     return all.filter((f) => {
       if (f.patient_id !== patient.id) return false;
@@ -54,7 +48,15 @@ export const PatientHome: React.FC<PatientHomeProps> = ({ onNavigate }) => {
       if (f.status === 'completed' || f.status === 'cancelled') return false;
       return true;
     }).sort((a, b) => a.due_date.localeCompare(b.due_date));
-  }, [patient.id]);
+  }, [patient?.id]);
+
+  if (!session || !patient || !authPatient) return null;
+
+  const isWard = authPatient.id !== patient.id;
+  const age = calculateAge(patient.date_of_birth);
+  const ageGroup = getAgeGroup(patient.date_of_birth);
+  const isRtl = language === 'ar';
+  const ChevronIcon = isRtl ? ChevronLeft : ChevronRight;
 
   const recallLabels: Record<RecallType, { ar: string; en: string }> = {
     post_operative: { ar: 'متابعة بعد الجراحة', en: 'Post-Operative' },
@@ -213,7 +215,7 @@ export const PatientHome: React.FC<PatientHomeProps> = ({ onNavigate }) => {
           <div className="space-y-2.5">
             {upcomingFollowUps.map((fup) => {
               const doc = staff.find((s) => s.id === fup.doctor_id);
-              const docName = doc ? (isRtl ? doc.full_name_ar : doc.full_name_en) : fup.doctor_id;
+              const docName = doc ? doc.display_name : fup.doctor_id;
               const rLabel = recallLabels[fup.recall_type || 'general_treatment'];
               const isOverdue = fup.due_date <= todayStr;
 
@@ -279,6 +281,26 @@ export const PatientHome: React.FC<PatientHomeProps> = ({ onNavigate }) => {
         </h3>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Action AI Assistant */}
+          <button
+            onClick={() => onNavigate('aiChat')}
+            id="action-nav-ai-chat"
+            className="flex items-start justify-between p-5 bg-gradient-to-br from-slate-900 to-slate-800 hover:from-slate-800 hover:to-slate-700 text-white rounded-xl border border-slate-700 shadow-sm transition-all group text-start"
+          >
+            <div className="space-y-1.5">
+              <div className="w-10 h-10 rounded-lg bg-teal-500/20 text-teal-400 border border-teal-400/30 flex items-center justify-center group-hover:scale-105 transition-transform">
+                <Sparkles className="w-5 h-5" />
+              </div>
+              <h4 className="font-bold text-white text-sm mt-3">
+                {language === 'ar' ? 'الدردشة الذكية' : 'AI Assistant'}
+              </h4>
+              <p className="text-xs text-slate-300 leading-relaxed">
+                {language === 'ar' ? 'استفسر عن مواعيدك والخدمات والأسعار' : 'Inquire about visits, services, & pricing'}
+              </p>
+            </div>
+            <ChevronIcon className="w-5 h-5 text-teal-400 group-hover:text-teal-300 transition-colors shrink-0 mt-1" />
+          </button>
+
           {/* Action 1: Digital Card */}
           <button
             onClick={() => onNavigate('digitalCard')}

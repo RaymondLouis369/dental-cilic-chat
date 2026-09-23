@@ -98,7 +98,7 @@ export const RecallFollowUpManagementModal: React.FC<RecallFollowUpManagementMod
   const staffUsers: StaffUser[] = useMemo(() => getStoredStaffUsers(), []);
   const branches: Branch[] = useMemo(() => getStoredBranches(), []);
   const doctors = useMemo(
-    () => staffUsers.filter((u) => u.role_key === 'doctor' || u.role_key === 'dentist'),
+    () => staffUsers.filter((u) => u.role_key === 'doctor'),
     [staffUsers]
   );
 
@@ -114,12 +114,12 @@ export const RecallFollowUpManagementModal: React.FC<RecallFollowUpManagementMod
         ...plan,
         patientName: patient ? `${patient.first_name} ${patient.last_name}` : plan.patient_id,
         patientCode: patient?.patient_code || '',
-        patientMobile: patient?.mobile_number || '',
-        doctorName: doctor ? (isAr ? doctor.full_name_ar : doctor.full_name_en) : plan.doctor_id,
-        branchName: branch ? (isAr ? branch.name_ar : branch.name_en) : plan.branch_id,
+        patientMobile: patient?.primary_mobile || '',
+        doctorName: doctor ? doctor.display_name : plan.doctor_id,
+        branchName: branch ? branch.name : plan.branch_id,
       };
     });
-  }, [rawPlans, patients, staffUsers, branches, isAr]);
+  }, [rawPlans, patients, staffUsers, branches]);
 
   // Filtered List
   const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
@@ -387,7 +387,7 @@ export const RecallFollowUpManagementModal: React.FC<RecallFollowUpManagementMod
                 <option value="all">{isAr ? 'جميع الفروع' : 'All Branches'}</option>
                 {branches.map((b) => (
                   <option key={b.id} value={b.id}>
-                    {isAr ? b.name_ar : b.name_en}
+                    {b.name}
                   </option>
                 ))}
               </select>
@@ -407,7 +407,7 @@ export const RecallFollowUpManagementModal: React.FC<RecallFollowUpManagementMod
                 <option value="all">{isAr ? 'جميع الأطباء' : 'All Doctors'}</option>
                 {doctors.map((d) => (
                   <option key={d.id} value={d.id}>
-                    {isAr ? d.full_name_ar : d.full_name_en}
+                    {d.display_name}
                   </option>
                 ))}
               </select>
@@ -858,7 +858,7 @@ export const RecallFollowUpManagementModal: React.FC<RecallFollowUpManagementMod
                   <option value="">{isAr ? '-- اختر الطبيب --' : '-- Select Doctor --'}</option>
                   {doctors.map((d) => (
                     <option key={d.id} value={d.id}>
-                      {isAr ? d.full_name_ar : d.full_name_en}
+                      {d.display_name}
                     </option>
                   ))}
                 </select>

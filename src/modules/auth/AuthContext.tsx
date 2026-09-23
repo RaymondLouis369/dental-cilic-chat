@@ -12,6 +12,7 @@ import {
   DEFAULT_BRANCHES,
   initSeedStorage,
   appendAuditLog,
+  safeStorage,
 } from '../../lib/storage';
 import {
   SYSTEM_ROLES,
@@ -38,18 +39,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Initialize storage seed on mount
   useEffect(() => {
-    initSeedStorage();
-    // Check persisted session
-    const saved = localStorage.getItem('dental_saas_session');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        setSession(parsed);
-      } catch {
-        localStorage.removeItem('dental_saas_session');
+    try {
+      initSeedStorage();
+      // Check persisted session
+      const saved = safeStorage.getItem('dental_saas_session');
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          setSession(parsed);
+        } catch {
+          safeStorage.removeItem('dental_saas_session');
+        }
       }
+    } catch (err) {
+      console.error('Error restoring session:', err);
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   }, []);
 
   const buildSession = (roleKey: RoleKey): AuthUserSession => {
@@ -172,7 +178,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           };
 
           setSession(realSession);
-          localStorage.setItem('dental_saas_session', JSON.stringify(realSession));
+          safeStorage.setItem('dental_saas_session', JSON.stringify(realSession));
 
           appendAuditLog({
             organization_id: DEFAULT_EGYPT_ORG.id,
@@ -246,7 +252,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const newSession = buildSession(roleKey);
 
     setSession(newSession);
-    localStorage.setItem('dental_saas_session', JSON.stringify(newSession));
+    safeStorage.setItem('dental_saas_session', JSON.stringify(newSession));
 
     appendAuditLog({
       organization_id: DEFAULT_EGYPT_ORG.id,
@@ -279,7 +285,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
     }
     setSession(null);
-    localStorage.removeItem('dental_saas_session');
+    safeStorage.removeItem('dental_saas_session');
   };
 
   const switchDemoRole = (roleKey: RoleKey) => {
@@ -293,7 +299,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const newSession = buildSession(roleKey);
     setSession(newSession);
-    localStorage.setItem('dental_saas_session', JSON.stringify(newSession));
+    safeStorage.setItem('dental_saas_session', JSON.stringify(newSession));
 
     appendAuditLog({
       organization_id: DEFAULT_EGYPT_ORG.id,

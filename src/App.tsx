@@ -35,6 +35,8 @@ import { DeliveryUserWorkspace } from './modules/clinical/DeliveryUserWorkspace'
 import { PatientPortalShell } from './modules/patient-portal/PatientPortalShell';
 import { PatientLogin } from './modules/patient-portal/PatientLogin';
 
+import { ErrorBoundary } from './components/ErrorBoundary';
+
 interface MainLayoutProps {
   onSwitchToPatient: () => void;
 }
@@ -130,28 +132,43 @@ const PatientPortalEntry: React.FC<{ onSwitchToStaff: () => void }> = ({ onSwitc
 
 export default function App() {
   const [portalMode, setPortalMode] = useState<'staff' | 'patient'>(() => {
-    return (localStorage.getItem('dental_portal_mode') as 'staff' | 'patient') || 'patient';
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        return (localStorage.getItem('dental_portal_mode') as 'staff' | 'patient') || 'patient';
+      }
+    } catch {
+      // ignore
+    }
+    return 'patient';
   });
 
   const handleSwitchPortal = (mode: 'staff' | 'patient') => {
-    localStorage.setItem('dental_portal_mode', mode);
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        localStorage.setItem('dental_portal_mode', mode);
+      }
+    } catch {
+      // ignore
+    }
     setPortalMode(mode);
   };
 
   return (
-    <LanguageProvider>
-      <AuthProvider>
-        <PatientAuthProvider>
-          {portalMode === 'patient' ? (
-            <PatientPortalEntry onSwitchToStaff={() => handleSwitchPortal('staff')} />
-          ) : (
-            <ProtectedRoute onSwitchToPatient={() => handleSwitchPortal('patient')}>
-              <MainLayout onSwitchToPatient={() => handleSwitchPortal('patient')} />
-            </ProtectedRoute>
-          )}
-          <OfflineIndicator />
-        </PatientAuthProvider>
-      </AuthProvider>
-    </LanguageProvider>
+    <ErrorBoundary>
+      <LanguageProvider>
+        <AuthProvider>
+          <PatientAuthProvider>
+            {portalMode === 'patient' ? (
+              <PatientPortalEntry onSwitchToStaff={() => handleSwitchPortal('staff')} />
+            ) : (
+              <ProtectedRoute onSwitchToPatient={() => handleSwitchPortal('patient')}>
+                <MainLayout onSwitchToPatient={() => handleSwitchPortal('patient')} />
+              </ProtectedRoute>
+            )}
+            <OfflineIndicator />
+          </PatientAuthProvider>
+        </AuthProvider>
+      </LanguageProvider>
+    </ErrorBoundary>
   );
 }

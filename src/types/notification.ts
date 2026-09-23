@@ -17,6 +17,10 @@ export type NotificationType =
   | 'delivery_status'
   | 'payment_invoice'
   | 'appointment_event'
+  | 'escalation_created'
+  | 'escalation_reply'
+  | 'escalation_resolved'
+  | 'escalation_reopened'
   | 'system';
 
 export interface NotificationItem {

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { GitBranch, MapPin, Phone, Clock, Plus, ShieldCheck, CheckCircle2, Lock } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { useLanguage } from '../i18n/LanguageContext';
-import { DEFAULT_BRANCHES, appendAuditLog } from '../../lib/storage';
+import { DEFAULT_BRANCHES, appendAuditLog, safeStorage } from '../../lib/storage';
 import { Branch } from '../../types';
 
 export const BranchList: React.FC = () => {
@@ -10,11 +10,15 @@ export const BranchList: React.FC = () => {
   const { t } = useLanguage();
 
   const [branches, setBranches] = useState<Branch[]>(() => {
-    const raw = localStorage.getItem('dental_saas_branches');
-    if (raw) {
-      const parsed: Branch[] = JSON.parse(raw);
-      // RLS policy: only branches in the same organization
-      return parsed.filter((b) => b.organization_id === session?.organization.id);
+    try {
+      const raw = safeStorage.getItem('dental_saas_branches');
+      if (raw) {
+        const parsed: Branch[] = JSON.parse(raw);
+        // RLS policy: only branches in the same organization
+        return parsed.filter((b) => b.organization_id === session?.organization.id);
+      }
+    } catch {
+      // fallback
     }
     return DEFAULT_BRANCHES;
   });

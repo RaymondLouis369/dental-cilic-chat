@@ -521,6 +521,60 @@ export const DoctorDashboardView: React.FC<DoctorDashboardViewProps> = ({
             )}
           </div>
 
+          {/* Due & Overdue Recalls */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+              <div className="flex items-center gap-2">
+                <CalendarClock className="w-5 h-5 text-emerald-600" />
+                <h3 className="text-sm font-bold text-slate-900">
+                  {isRtl ? 'مواعيد المتابعة والاستدعاء المستحقة' : 'Due & Overdue Recalls'}
+                </h3>
+              </div>
+              <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
+                {summary.followUpsDue.length}
+              </span>
+            </div>
+
+            {summary.followUpsDue.length === 0 ? (
+              <p className="text-xs text-slate-400 italic">
+                {isRtl ? 'لا توجد مواعيد متابعة مستحقة حالياً.' : 'No due follow-ups.'}
+              </p>
+            ) : (
+              <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
+                {summary.followUpsDue.map((fup) => {
+                  const pt = allPatients.find((p) => p.id === fup.patient_id);
+                  const ptName = getPatientName(pt);
+                  return (
+                    <div
+                      key={fup.id}
+                      className="p-3 rounded-xl border border-emerald-200 bg-emerald-50/30 text-xs space-y-1.5"
+                    >
+                      <div className="flex items-center justify-between">
+                        <strong className="text-slate-900 font-bold">{ptName}</strong>
+                        <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded">
+                          {fup.due_date}
+                        </span>
+                      </div>
+                      <p className="text-slate-600 text-[11px]">{fup.reason}</p>
+                      <div className="flex items-center justify-between pt-1">
+                        <span className="text-[10px] text-slate-400 capitalize">
+                          {fup.recall_type ? fup.recall_type.replace('_', ' ') : 'General'}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => onSelectPatient(fup.patient_id, 'notes')}
+                          className="text-[10px] font-bold text-blue-700 hover:text-blue-900 underline"
+                        >
+                          {isRtl ? 'عرض الملف' : 'View File'}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
           {/* Quick Patient Switcher */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5 space-y-3">
             <div className="flex items-center gap-2">

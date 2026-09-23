@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Users, Mail, Phone, Shield, Plus, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { useLanguage } from '../i18n/LanguageContext';
-import { DEMO_STAFF_CREDENTIALS, DEFAULT_BRANCHES, appendAuditLog } from '../../lib/storage';
+import { DEMO_STAFF_CREDENTIALS, DEFAULT_BRANCHES, appendAuditLog, safeStorage } from '../../lib/storage';
 import { RoleBadge } from '../navigation/RoleBadge';
 import { RoleKey, Profile } from '../../types';
 
@@ -11,10 +11,14 @@ export const UserListView: React.FC = () => {
   const { t } = useLanguage();
 
   const [staffList, setStaffList] = useState<Profile[]>(() => {
-    const raw = localStorage.getItem('dental_saas_profiles');
-    if (raw) {
-      const parsed: Profile[] = JSON.parse(raw);
-      return parsed.filter((p) => p.organization_id === session?.organization.id);
+    try {
+      const raw = safeStorage.getItem('dental_saas_profiles');
+      if (raw) {
+        const parsed: Profile[] = JSON.parse(raw);
+        return parsed.filter((p) => p.organization_id === session?.organization.id);
+      }
+    } catch {
+      // fallback
     }
     return Object.values(DEMO_STAFF_CREDENTIALS).map((c) => c.profile);
   });

@@ -7,6 +7,8 @@ import { PatientProfile } from './PatientProfile';
 import { FamilyView } from './FamilyView';
 import { PatientNotifications } from './PatientNotifications';
 import { PatientSettings } from './PatientSettings';
+import { PatientSupportTickets } from './PatientSupportTickets';
+import { PatientAIChat } from './PatientAIChat';
 import { ProfileChooserModal } from './ProfileChooserModal';
 import { ProfileDropdown } from './ProfileDropdown';
 import { ActivePatientBanner } from './ActivePatientBanner';
@@ -24,6 +26,7 @@ import {
   Building2,
   Globe,
   ArrowRightLeft,
+  MessageSquare,
 } from 'lucide-react';
 
 export type PatientPortalTab =
@@ -32,6 +35,8 @@ export type PatientPortalTab =
   | 'profile'
   | 'family'
   | 'notifications'
+  | 'tickets'
+  | 'aiChat'
   | 'settings';
 
 interface PatientPortalShellProps {
@@ -65,6 +70,10 @@ export const PatientPortalShell: React.FC<PatientPortalShellProps> = ({ onSwitch
         return <FamilyView />;
       case 'notifications':
         return <PatientNotifications />;
+      case 'tickets':
+        return <PatientSupportTickets />;
+      case 'aiChat':
+        return <PatientAIChat />;
       case 'settings':
         return <PatientSettings />;
       default:
@@ -74,10 +83,20 @@ export const PatientPortalShell: React.FC<PatientPortalShellProps> = ({ onSwitch
 
   const navItems = [
     { id: 'home' as PatientPortalTab, label: t.patientPortal.home, icon: Home },
+    {
+      id: 'aiChat' as PatientPortalTab,
+      label: language === 'ar' ? 'الدردشة الذكية' : 'AI Assistant',
+      icon: Sparkles,
+    },
     { id: 'digitalCard' as PatientPortalTab, label: t.patientPortal.digitalCard, icon: QrCode },
     { id: 'profile' as PatientPortalTab, label: t.patientPortal.profile, icon: User },
     { id: 'family' as PatientPortalTab, label: t.patientPortal.family, icon: Users },
     { id: 'notifications' as PatientPortalTab, label: t.patientPortal.notifications, icon: Bell },
+    {
+      id: 'tickets' as PatientPortalTab,
+      label: language === 'ar' ? 'الشكاوى والاستفسارات' : 'Support & Complaints',
+      icon: MessageSquare,
+    },
     { id: 'settings' as PatientPortalTab, label: t.patientPortal.settings, icon: Settings },
   ];
 

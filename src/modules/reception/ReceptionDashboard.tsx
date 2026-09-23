@@ -26,6 +26,7 @@ import {
   ClipboardList,
   FlaskConical,
   Receipt,
+  MessageSquare,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -56,6 +57,7 @@ import { ReceptionTasksModal } from './ReceptionTasksModal';
 import { LabOrderManagementDashboard } from './LabOrderManagementDashboard';
 import { InvoiceModal } from './InvoiceModal';
 import { RecallFollowUpManagementModal } from './RecallFollowUpManagementModal';
+import { ComplaintsManagementModal } from './ComplaintsManagementModal';
 
 export const ReceptionDashboard: React.FC = () => {
   const { session } = useAuth();
@@ -87,6 +89,7 @@ export const ReceptionDashboard: React.FC = () => {
   const [showTasksModal, setShowTasksModal] = useState(false);
   const [showRecallModal, setShowRecallModal] = useState(false);
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
+  const [showComplaintsModal, setShowComplaintsModal] = useState(false);
   const [selectedPatientFile, setSelectedPatientFile] = useState<Patient | null>(null);
 
   // Search & Filter state
@@ -477,6 +480,15 @@ export const ReceptionDashboard: React.FC = () => {
               >
                 <Receipt className="w-4 h-4 text-blue-200" />
                 <span>{isAr ? 'الفواتير والحسابات' : 'Invoices & Billing'}</span>
+              </button>
+
+              <button
+                id="reception-complaints-tickets-btn"
+                onClick={() => setShowComplaintsModal(true)}
+                className="px-3.5 py-2 bg-rose-700 hover:bg-rose-800 text-white rounded-xl text-xs font-bold shadow-sm flex items-center gap-1.5 transition-all"
+              >
+                <MessageSquare className="w-4 h-4 text-rose-200" />
+                <span>{isAr ? 'الشكاوى وتذاكر الدعم' : 'Complaints & Support'}</span>
               </button>
             </div>
           </div>
@@ -1090,6 +1102,11 @@ export const ReceptionDashboard: React.FC = () => {
         isOpen={showInvoiceModal}
         onClose={() => setShowInvoiceModal(false)}
         onInvoiceUpdated={refreshData}
+      />
+      <ComplaintsManagementModal
+        isOpen={showComplaintsModal}
+        onClose={() => setShowComplaintsModal(false)}
+        defaultBranchId={selectedBranchId}
       />
     </div>
   );
