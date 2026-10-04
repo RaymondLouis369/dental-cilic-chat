@@ -27,7 +27,12 @@ import {
   FlaskConical,
   Receipt,
   MessageSquare,
+  LayoutList,
+  CalendarDays,
+  RotateCcw,
 } from 'lucide-react';
+import { AppointmentCalendarView } from '../scheduling/AppointmentCalendarView';
+import { RescheduleAppointmentModal } from '../scheduling/RescheduleAppointmentModal';
 import { useAuth } from '../auth/AuthContext';
 import { useLanguage } from '../i18n/LanguageContext';
 import {
@@ -37,6 +42,11 @@ import {
   updateAppointmentStatus,
   updateWaitingListStatus,
 } from '../../lib/receptionAndBillingStorage';
+import {
+  confirmAppointmentByReception,
+  sendAppointmentReminders,
+  getUnconfirmedAppointmentsAlerts,
+} from '../../lib/appointmentService';
 import { getStoredPatients } from '../../lib/patientStorage';
 import { getStoredBranches, getStoredStaffUsers } from '../../lib/storage';
 import {
@@ -55,9 +65,13 @@ import { PatientLookupModal } from './PatientLookupModal';
 import { CustomServiceModal } from './CustomServiceModal';
 import { ReceptionTasksModal } from './ReceptionTasksModal';
 import { LabOrderManagementDashboard } from './LabOrderManagementDashboard';
+import { ReceptionWaitingRoom } from './ReceptionWaitingRoom';
 import { InvoiceModal } from './InvoiceModal';
 import { RecallFollowUpManagementModal } from './RecallFollowUpManagementModal';
 import { ComplaintsManagementModal } from './ComplaintsManagementModal';
+import { PatientWalletModal } from './PatientWalletModal';
+import { InsuranceClaimsModal } from './InsuranceClaimsModal';
+import { Wallet, Award } from 'lucide-react';
 
 export const ReceptionDashboard: React.FC = () => {
   const { session } = useAuth();
@@ -78,8 +92,8 @@ export const ReceptionDashboard: React.FC = () => {
     return branches[0]?.id || '11111111-1111-1111-1111-111111111111';
   });
 
-  // Reception Workspace Main Tab state ('appointments' | 'lab_orders')
-  const [receptionViewTab, setReceptionViewTab] = useState<'appointments' | 'lab_orders'>('appointments');
+  // Reception Workspace Main Tab state ('appointments' | 'waiting_room' | 'lab_orders')
+  const [receptionViewTab, setReceptionViewTab] = useState<'appointments' | 'waiting_room' | 'lab_orders'>('appointments');
 
   // Modals state
   const [showBookingModal, setShowBookingModal] = useState(false);
@@ -90,11 +104,17 @@ export const ReceptionDashboard: React.FC = () => {
   const [showRecallModal, setShowRecallModal] = useState(false);
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [showComplaintsModal, setShowComplaintsModal] = useState(false);
+  const [showWalletModal, setShowWalletModal] = useState(false);
+  const [showInsuranceModal, setShowInsuranceModal] = useState(false);
   const [selectedPatientFile, setSelectedPatientFile] = useState<Patient | null>(null);
 
-  // Search & Filter state
+  // Search, Filter & View state
+  const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [typeFilter, setTypeFilter] = useState<string>('all');
+  const [doctorFilter, setDoctorFilter] = useState<string>('all');
+  const [rescheduleApt, setRescheduleApt] = useState<Appointment | null>(null);
 
   // Trigger re-fetch
   const [refreshKey, setRefreshKey] = useState(0);
@@ -145,6 +165,41 @@ export const ReceptionDashboard: React.FC = () => {
         (t.status === 'pending' || t.status === 'in_progress')
     ).length;
   }, [doctorTasks, selectedBranchId]);
+
+  // Caller context for reception staff
+  const receptionCallerContext = useMemo(() => {
+    return {
+      organizationId: session?.profile?.organization_id || 'org_dental_egy_01',
+      profileId: session?.profile?.id,
+      userId: session?.profile?.id,
+      roleKey: (session?.profile?.role_key || 'receptionist') as any,
+      assignedBranchIds: selectedBranchId !== 'all' ? [selectedBranchId] : undefined,
+      isOrgWideManager: session?.profile?.role_key === 'center_manager',
+    };
+  }, [session, selectedBranchId]);
+
+  // Automatically trigger automated appointment reminders
+  useEffect(() => {
+    try {
+      sendAppointmentReminders(receptionCallerContext);
+    } catch {
+      // ignore
+    }
+  }, [receptionCallerContext, refreshKey]);
+
+  // Unconfirmed Appointments Alerts
+  const unconfirmedAlerts = useMemo(() => {
+    return getUnconfirmedAppointmentsAlerts(receptionCallerContext, selectedBranchId);
+  }, [receptionCallerContext, selectedBranchId, refreshKey]);
+
+  const handleReceptionConfirm = (aptId: string) => {
+    const res = confirmAppointmentByReception(aptId, receptionCallerContext);
+    if (res.success) {
+      refreshData();
+    } else {
+      alert(res.error || 'Failed to confirm appointment');
+    }
+  };
 
   // Real-time Branch Summary Stats ('Pending Appointments', 'Active Investigations', 'Referrals Pending', 'In Clinic Patients')
   const branchRealtimeStats = useMemo(() => {
@@ -217,6 +272,14 @@ export const ReceptionDashboard: React.FC = () => {
       }
       // Status filter
       if (statusFilter !== 'all' && apt.status !== statusFilter) {
+        return false;
+      }
+      // Doctor filter
+      if (doctorFilter !== 'all' && apt.doctor_id !== doctorFilter) {
+        return false;
+      }
+      // Appointment Type filter
+      if (typeFilter !== 'all' && apt.appointment_type !== typeFilter) {
         return false;
       }
       // Search query (patient name, code, mobile, doctor name)
@@ -348,7 +411,31 @@ export const ReceptionDashboard: React.FC = () => {
           }`}
         >
           <Calendar className="w-4 h-4" />
-          <span>{isAr ? 'المواعيد وقائمة الانتظار' : 'Appointments & Waiting List'}</span>
+          <span>{isAr ? 'جدول المواعيد العام' : 'Appointments Calendar'}</span>
+        </button>
+
+        <button
+          id="reception-waiting-room-tab-btn"
+          onClick={() => setReceptionViewTab('waiting_room')}
+          className={`px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all ${
+            receptionViewTab === 'waiting_room'
+              ? 'bg-amber-700 text-white shadow-xs'
+              : 'bg-white text-amber-900 hover:bg-amber-50 border border-amber-200'
+          }`}
+        >
+          <Clock className="w-4 h-4 text-amber-500" />
+          <span>{isAr ? 'غرفة الانتظار وطابور اليوم' : 'Waiting Room & Queue'}</span>
+          {(stats.arrived + stats.waiting + stats.withDoctor) > 0 && (
+            <span
+              className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                receptionViewTab === 'waiting_room'
+                  ? 'bg-amber-900 text-white'
+                  : 'bg-amber-100 text-amber-900 border border-amber-300'
+              }`}
+            >
+              {stats.arrived + stats.waiting + stats.withDoctor}
+            </span>
+          )}
         </button>
 
         <button
@@ -380,6 +467,8 @@ export const ReceptionDashboard: React.FC = () => {
         <LabOrderManagementDashboard
           onBackToAppointments={() => setReceptionViewTab('appointments')}
         />
+      ) : receptionViewTab === 'waiting_room' ? (
+        <ReceptionWaitingRoom selectedBranchId={selectedBranchId} />
       ) : (
         <>
           {/* Top Header */}
@@ -483,6 +572,27 @@ export const ReceptionDashboard: React.FC = () => {
               </button>
 
               <button
+                id="reception-wallet-loyalty-btn"
+                onClick={() => {
+                  if (patients.length > 0) setSelectedPatientFile(patients[0]);
+                  setShowWalletModal(true);
+                }}
+                className="px-3.5 py-2 bg-teal-700 hover:bg-teal-800 text-white rounded-xl text-xs font-bold shadow-sm flex items-center gap-1.5 transition-all"
+              >
+                <Wallet className="w-4 h-4 text-teal-200" />
+                <span>{isAr ? 'المحفظة والولاء' : 'Wallet & Loyalty'}</span>
+              </button>
+
+              <button
+                id="reception-insurance-claims-btn"
+                onClick={() => setShowInsuranceModal(true)}
+                className="px-3.5 py-2 bg-indigo-700 hover:bg-indigo-800 text-white rounded-xl text-xs font-bold shadow-sm flex items-center gap-1.5 transition-all"
+              >
+                <Shield className="w-4 h-4 text-indigo-200" />
+                <span>{isAr ? 'المطالبات والتأمين' : 'Insurance Claims'}</span>
+              </button>
+
+              <button
                 id="reception-complaints-tickets-btn"
                 onClick={() => setShowComplaintsModal(true)}
                 className="px-3.5 py-2 bg-rose-700 hover:bg-rose-800 text-white rounded-xl text-xs font-bold shadow-sm flex items-center gap-1.5 transition-all"
@@ -492,6 +602,37 @@ export const ReceptionDashboard: React.FC = () => {
               </button>
             </div>
           </div>
+
+          {/* Unconfirmed Appointments Alert Banner */}
+          {unconfirmedAlerts.unconfirmed_count > 0 && (
+            <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-amber-900 text-xs shadow-xs">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-amber-200/80 text-amber-800 flex items-center justify-center shrink-0 font-bold">
+                  <AlertCircle className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="font-bold text-sm">
+                    {isAr
+                      ? `تنبيه: يوجد ${unconfirmedAlerts.unconfirmed_count} مواعيد قادمة بانتظار التأكيد`
+                      : `Alert: ${unconfirmedAlerts.unconfirmed_count} upcoming appointment(s) pending confirmation`}
+                  </div>
+                  <div className="text-amber-800/80 mt-0.5">
+                    {isAr
+                      ? 'يرجى التواصل مع المرضى لتأكيد الحضور أو التأكيد بنقرة واحدة'
+                      : 'Please contact patients or confirm visit with one click'}
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setStatusFilter('confirmed')}
+                className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl text-xs transition-all shrink-0"
+              >
+                {isAr ? 'عرض المواعيد غير المؤكدة' : 'View Unconfirmed'}
+              </button>
+            </div>
+          )}
 
       {/* Filter & Date Bar */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm text-xs">
@@ -731,9 +872,9 @@ export const ReceptionDashboard: React.FC = () => {
 
       {/* Main Grid: Waiting List (Side) + Appointments (Main) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Appointments Table (2 Cols) */}
+        {/* Appointments Table / Calendar (2 Cols) */}
         <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
-          <div className="p-4 border-b border-slate-200 flex items-center justify-between">
+          <div className="p-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <Calendar className="w-4 h-4 text-teal-600" />
               <h2 className="text-sm font-bold text-slate-900">
@@ -741,17 +882,102 @@ export const ReceptionDashboard: React.FC = () => {
               </h2>
             </div>
 
-            {statusFilter !== 'all' && (
-              <button
-                onClick={() => setStatusFilter('all')}
-                className="text-xs text-teal-600 hover:underline"
+            <div className="flex flex-wrap items-center gap-2">
+              {/* View Toggle */}
+              <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setViewMode('list')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 transition-all ${
+                    viewMode === 'list'
+                      ? 'bg-white text-teal-800 shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <LayoutList className="w-3.5 h-3.5" />
+                  <span>{isAr ? 'قائمة' : 'List'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('calendar')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 transition-all ${
+                    viewMode === 'calendar'
+                      ? 'bg-white text-teal-800 shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <CalendarDays className="w-3.5 h-3.5" />
+                  <span>{isAr ? 'تقويم' : 'Calendar'}</span>
+                </button>
+              </div>
+
+              {/* Doctor filter */}
+              <select
+                value={doctorFilter}
+                onChange={(e) => setDoctorFilter(e.target.value)}
+                className="px-2 py-1 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-700"
               >
-                {isAr ? 'إعادة ضبط التصفية' : 'Reset Filter'}
-              </button>
-            )}
+                <option value="all">{isAr ? 'كل الأطباء' : 'All Doctors'}</option>
+                {staff
+                  .filter((s) => s.role_key === 'doctor')
+                  .map((doc) => (
+                    <option key={doc.id} value={doc.id}>
+                      {doc.display_name}
+                    </option>
+                  ))}
+              </select>
+
+              {/* Appointment Type filter */}
+              <select
+                value={typeFilter}
+                onChange={(e) => setTypeFilter(e.target.value)}
+                className="px-2 py-1 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-700"
+              >
+                <option value="all">{isAr ? 'كل الأنواع' : 'All Types'}</option>
+                <option value="consultation">{isAr ? 'استشارة' : 'Consultation'}</option>
+                <option value="treatment">{isAr ? 'علاج' : 'Treatment'}</option>
+                <option value="follow_up">{isAr ? 'متابعة' : 'Follow-Up'}</option>
+                <option value="cleaning">{isAr ? 'تنظيف' : 'Cleaning'}</option>
+                <option value="prosthetic">{isAr ? 'تركيبات' : 'Prosthetic'}</option>
+                <option value="orthodontic">{isAr ? 'تقويم' : 'Orthodontic'}</option>
+                <option value="emergency">{isAr ? 'طوارئ' : 'Emergency'}</option>
+                <option value="general">{isAr ? 'عام' : 'General'}</option>
+              </select>
+
+              {(statusFilter !== 'all' || typeFilter !== 'all' || doctorFilter !== 'all') && (
+                <button
+                  onClick={() => {
+                    setStatusFilter('all');
+                    setTypeFilter('all');
+                    setDoctorFilter('all');
+                  }}
+                  className="text-xs text-teal-600 hover:underline"
+                >
+                  {isAr ? 'إعادة ضبط' : 'Reset'}
+                </button>
+              )}
+            </div>
           </div>
 
-          {filteredAppointments.length === 0 ? (
+          {viewMode === 'calendar' ? (
+            <div className="p-4">
+              <AppointmentCalendarView
+                appointments={appointments}
+                patients={patients}
+                doctors={staff.filter((s) => s.role_key === 'doctor')}
+                branches={getStoredBranches()}
+                selectedDate={selectedDate}
+                onSelectDate={setSelectedDate}
+                selectedBranchId={selectedBranchId}
+                selectedDoctorId={doctorFilter}
+                onSelectDoctorId={setDoctorFilter}
+                onStatusChange={(aptId, st) => handleStatusChange(aptId, st)}
+                onRescheduleClick={(apt) => setRescheduleApt(apt)}
+                onCancelClick={(apt) => handleStatusChange(apt.id, 'cancelled')}
+                onNewBookingClick={() => setShowBookingModal(true)}
+              />
+            </div>
+          ) : filteredAppointments.length === 0 ? (
             <div className="p-12 text-center text-slate-500 text-xs">
               <Calendar className="w-10 h-10 mx-auto text-slate-300 mb-2" />
               <p>{isAr ? 'لا توجد مواعيد مسجلة تطابق التصفية الحالية' : 'No appointments matching filter'}</p>
@@ -764,6 +990,7 @@ export const ReceptionDashboard: React.FC = () => {
                     <th className="px-3.5 py-3 text-start">{isAr ? 'الوقت' : 'Time'}</th>
                     <th className="px-3.5 py-3 text-start">{isAr ? 'المريض' : 'Patient'}</th>
                     <th className="px-3.5 py-3 text-start">{isAr ? 'الطبيب والخدمة' : 'Doctor & Service'}</th>
+                    <th className="px-3.5 py-3 text-start">{isAr ? 'النوع' : 'Type'}</th>
                     <th className="px-3.5 py-3 text-start">{isAr ? 'الحالة' : 'Status'}</th>
                     <th className="px-3.5 py-3 text-center">{isAr ? 'إجراءات سريعة' : 'Actions'}</th>
                   </tr>
@@ -807,18 +1034,52 @@ export const ReceptionDashboard: React.FC = () => {
                           </div>
                         </td>
 
+                        {/* Type */}
+                        <td className="px-3.5 py-3 whitespace-nowrap">
+                          <span className="inline-block px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200 capitalize">
+                            {apt.appointment_type || 'general'}
+                          </span>
+                        </td>
+
                         {/* Status */}
                         <td className="px-3.5 py-3 whitespace-nowrap">
-                          <span
-                            className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-bold border ${statusBadge.bg}`}
-                          >
-                            {statusBadge.label}
-                          </span>
+                          <div className="flex flex-col gap-1">
+                            <span
+                              className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-bold border ${statusBadge.bg}`}
+                            >
+                              {statusBadge.label}
+                            </span>
+                            <span
+                              className={`inline-block px-2 py-0.5 rounded-md text-[9px] font-bold ${
+                                apt.confirmation_status === 'patient_confirmed' || apt.confirmation_status === 'reception_confirmed'
+                                  ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                                  : 'bg-amber-50 text-amber-800 border border-amber-200'
+                              }`}
+                            >
+                              {apt.confirmation_status === 'patient_confirmed'
+                                ? (isAr ? 'مؤكد (مريض)' : 'Patient Confirmed')
+                                : apt.confirmation_status === 'reception_confirmed'
+                                ? (isAr ? 'مؤكد (استقبال)' : 'Reception Confirmed')
+                                : (isAr ? 'بانتظار التأكيد' : 'Pending Confirmation')}
+                            </span>
+                          </div>
                         </td>
 
                         {/* Actions */}
                         <td className="px-3.5 py-3 text-center whitespace-nowrap">
                           <div className="flex items-center justify-center gap-1.5">
+                            {/* Reception Confirm Button */}
+                            {apt.confirmation_status !== 'patient_confirmed' && apt.confirmation_status !== 'reception_confirmed' && (
+                              <button
+                                type="button"
+                                onClick={() => handleReceptionConfirm(apt.id)}
+                                title={isAr ? 'تأكيد الموعد بواسطة الاستقبال' : 'Confirm Appointment'}
+                                className="p-1.5 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg border border-emerald-200 font-bold transition-all"
+                              >
+                                <UserCheck className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+
                             {/* Change status selector */}
                             <select
                               value={apt.status}
@@ -834,6 +1095,16 @@ export const ReceptionDashboard: React.FC = () => {
                               <option value="no_show">{isAr ? 'لم يحضر' : 'No-Show'}</option>
                               <option value="late">{isAr ? 'متأخر' : 'Late'}</option>
                             </select>
+
+                            {/* Reschedule Button */}
+                            <button
+                              type="button"
+                              onClick={() => setRescheduleApt(apt)}
+                              title={isAr ? 'إعادة جدولة الموعد' : 'Reschedule Appointment'}
+                              className="p-1.5 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg transition-colors"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" />
+                            </button>
 
                             {/* View Patient File */}
                             {patient && (
@@ -1107,6 +1378,26 @@ export const ReceptionDashboard: React.FC = () => {
         isOpen={showComplaintsModal}
         onClose={() => setShowComplaintsModal(false)}
         defaultBranchId={selectedBranchId}
+      />
+      <PatientWalletModal
+        isOpen={showWalletModal}
+        onClose={() => setShowWalletModal(false)}
+        patient={selectedPatientFile || patients[0] || null}
+        onSuccess={refreshData}
+      />
+      <InsuranceClaimsModal
+        isOpen={showInsuranceModal}
+        onClose={() => setShowInsuranceModal(false)}
+        onSuccess={refreshData}
+      />
+      <RescheduleAppointmentModal
+        isOpen={!!rescheduleApt}
+        appointment={rescheduleApt}
+        patient={patients.find((p) => p.id === rescheduleApt?.patient_id)}
+        doctor={staff.find((s) => s.id === rescheduleApt?.doctor_id)}
+        branch={getStoredBranches().find((b) => b.id === rescheduleApt?.branch_id)}
+        onClose={() => setRescheduleApt(null)}
+        onSuccess={refreshData}
       />
     </div>
   );

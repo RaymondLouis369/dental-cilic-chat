@@ -44,9 +44,11 @@ import {
   Supplier,
   SupplierType,
 } from '../types/receptionAndBilling';
+import { AppointmentType } from '../types/appointment';
 import { Patient, RoleKey } from '../types';
 import { DEFAULT_EGYPT_ORG, getStoredStaffUsers } from './storage';
 import { getStoredPatients, setStoredPatients } from './patientStorage';
+import { supabase } from './supabase';
 import { createNotification } from './notificationStorage';
 
 export const RECEPTION_STORAGE_KEYS = {
@@ -836,10 +838,12 @@ export const SEED_APPOINTMENTS: Appointment[] = [
     doctor_id: 'prof_doc_01', // Dr. Karim Hassan
     service_id: 'srv_003', // Scaling & Polishing
     appointment_date: getTodayDateString(),
+    date: getTodayDateString(),
     start_time: '10:00',
     end_time: '10:30',
     duration_minutes: 30,
     status: 'confirmed',
+    appointment_type: 'cleaning',
     booking_type: 'scheduled',
     notes: 'تنظيف جير دوري للفكين',
     created_by: 'prof_rec_01',
@@ -855,10 +859,12 @@ export const SEED_APPOINTMENTS: Appointment[] = [
     doctor_id: 'prof_doc_01',
     service_id: 'srv_002', // Pediatric Consultation
     appointment_date: getTodayDateString(),
+    date: getTodayDateString(),
     start_time: '10:30',
     end_time: '11:00',
     duration_minutes: 30,
     status: 'arrived',
+    appointment_type: 'consultation',
     booking_type: 'scheduled',
     notes: 'فحص دوري لأسنان الطفلة بحضور الأب',
     check_in_time: '2026-01-10T10:25:00Z',
@@ -875,10 +881,12 @@ export const SEED_APPOINTMENTS: Appointment[] = [
     doctor_id: 'prof_bm_01', // Dr. Mona El-Gohary (Pediatric specialist)
     service_id: 'srv_002',
     appointment_date: getTodayDateString(),
+    date: getTodayDateString(),
     start_time: '12:30',
     end_time: '13:00',
     duration_minutes: 30,
     status: 'waiting',
+    appointment_type: 'consultation',
     booking_type: 'scheduled',
     notes: 'شكوى من ألم في الضرس اللبني',
     check_in_time: '2026-01-10T12:20:00Z',
@@ -895,10 +903,12 @@ export const SEED_APPOINTMENTS: Appointment[] = [
     doctor_id: 'prof_doc_01',
     service_id: 'srv_004', // Composite Filling
     appointment_date: getTodayDateString(),
+    date: getTodayDateString(),
     start_time: '15:00',
     end_time: '15:45',
     duration_minutes: 45,
     status: 'confirmed',
+    appointment_type: 'treatment',
     booking_type: 'scheduled',
     notes: 'حشو ضوئي لفرع سموحة بالإسكندرية',
     created_by: 'prof_bm_01',
@@ -984,13 +994,59 @@ export function setStoredDoctorShifts(items: DoctorShift[]): void {
   safeStorage.setItem(RECEPTION_STORAGE_KEYS.DOCTOR_SHIFTS, JSON.stringify(items));
 }
 
+// Secure in-memory / session store for appointments (no sensitive data in localStorage)
+const appointmentMemoryStore = new Map<string, string>();
+
 export function getStoredAppointments(): Appointment[] {
-  const raw = safeStorage.getItem(RECEPTION_STORAGE_KEYS.APPOINTMENTS);
-  return raw ? JSON.parse(raw) : SEED_APPOINTMENTS;
+  try {
+    if (typeof window !== 'undefined' && window.sessionStorage) {
+      const sess = window.sessionStorage.getItem(RECEPTION_STORAGE_KEYS.APPOINTMENTS);
+      if (sess) {
+        return JSON.parse(sess);
+      }
+    }
+  } catch {
+    // fallback
+  }
+
+  const mem = appointmentMemoryStore.get(RECEPTION_STORAGE_KEYS.APPOINTMENTS);
+  if (mem) {
+    return JSON.parse(mem);
+  }
+
+  // Clear any historical sensitive data from localStorage
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const legacy = window.localStorage.getItem(RECEPTION_STORAGE_KEYS.APPOINTMENTS);
+      if (legacy) {
+        window.localStorage.removeItem(RECEPTION_STORAGE_KEYS.APPOINTMENTS);
+        const parsed = JSON.parse(legacy);
+        appointmentMemoryStore.set(RECEPTION_STORAGE_KEYS.APPOINTMENTS, JSON.stringify(parsed));
+        return parsed;
+      }
+    }
+  } catch {
+    // fallback
+  }
+
+  return SEED_APPOINTMENTS;
 }
 
 export function setStoredAppointments(items: Appointment[]): void {
-  safeStorage.setItem(RECEPTION_STORAGE_KEYS.APPOINTMENTS, JSON.stringify(items));
+  const json = JSON.stringify(items);
+  appointmentMemoryStore.set(RECEPTION_STORAGE_KEYS.APPOINTMENTS, json);
+
+  try {
+    if (typeof window !== 'undefined' && window.sessionStorage) {
+      window.sessionStorage.setItem(RECEPTION_STORAGE_KEYS.APPOINTMENTS, json);
+    }
+    // Strictly prevent sensitive appointment data in localStorage
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.removeItem(RECEPTION_STORAGE_KEYS.APPOINTMENTS);
+    }
+  } catch {
+    // fallback
+  }
 }
 
 export function getStoredWaitingList(): WaitingListEntry[] {
@@ -1335,6 +1391,9 @@ export function bookAppointment(params: {
   appointmentDate?: string;
   startTime?: string;
   durationMinutes?: number;
+  appointmentType?: AppointmentType;
+  treatmentPlanId?: string;
+  treatmentServiceId?: string;
   notes?: string;
   actorUserId?: string;
   appointmentData?: {
@@ -1343,9 +1402,13 @@ export function bookAppointment(params: {
     doctor_id?: string;
     service_id?: string;
     appointment_date?: string;
+    date?: string;
     start_time?: string;
     end_time?: string;
     status?: AppointmentStatus;
+    appointment_type?: AppointmentType;
+    treatment_plan_id?: string;
+    treatment_service_id?: string;
     notes?: string;
     booked_by_staff_id?: string;
   };
@@ -1431,10 +1494,14 @@ export function bookAppointment(params: {
     doctor_id: doctorId,
     service_id: serviceId,
     appointment_date: appointmentDate,
+    date: appointmentDate,
     start_time: startTime,
     end_time: endTime,
     duration_minutes: durationMinutes,
     status: 'confirmed',
+    appointment_type: params.appointmentType || aptData?.appointment_type || 'general',
+    treatment_plan_id: params.treatmentPlanId || aptData?.treatment_plan_id,
+    treatment_service_id: params.treatmentServiceId || aptData?.treatment_service_id,
     booking_type: 'scheduled',
     notes,
     created_by: actorUserId,
@@ -3099,6 +3166,9 @@ export function getStoredLabMaterialCosts(organizationId?: string, invoiceId?: s
 
 export function setStoredLabMaterialCosts(costs: LabMaterialCostRecord[]): void {
   safeStorage.setItem(RECEPTION_STORAGE_KEYS.LAB_MATERIAL_COSTS, JSON.stringify(costs));
+  if (supabase) {
+    Promise.resolve(supabase.from('lab_material_costs').upsert(costs)).catch(() => {});
+  }
 }
 
 export function recordLabMaterialCost(

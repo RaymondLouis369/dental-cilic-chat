@@ -1,5 +1,6 @@
 import React, { ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RefreshCw, Home, ChevronDown, ChevronUp, ShieldAlert } from 'lucide-react';
+import { safeStorage } from '../lib/storage';
 
 interface Props {
   children: ReactNode;
@@ -41,11 +42,9 @@ export class ErrorBoundary extends React.Component<Props, State> {
 
   private handleClearDataAndReload = () => {
     try {
-      if (typeof window !== 'undefined' && window.localStorage) {
-        localStorage.removeItem('dental_saas_session');
-        localStorage.removeItem('dental_saas_patient_session');
-        localStorage.removeItem('dental_portal_mode');
-      }
+      safeStorage.removeItem('dental_saas_session');
+      safeStorage.removeItem('dental_saas_patient_session');
+      safeStorage.removeItem('dental_portal_mode');
     } catch {
       // ignore
     }

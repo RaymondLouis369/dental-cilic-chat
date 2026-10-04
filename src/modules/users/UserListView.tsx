@@ -53,7 +53,7 @@ export const UserListView: React.FC = () => {
 
     const updated = [...staffList, newProfile];
     setStaffList(updated);
-    localStorage.setItem('dental_saas_profiles', JSON.stringify(updated));
+    safeStorage.setItem('dental_saas_profiles', JSON.stringify(updated));
 
     appendAuditLog({
       organization_id: session.organization.id,

@@ -537,6 +537,7 @@ export interface LabOrder {
   service_name_en?: string;
   teeth: string[];
   delivery_date: string;
+  order_date?: string;
   required_delivery_date?: string;
   shade_notes?: string;
   materials_notes?: string;

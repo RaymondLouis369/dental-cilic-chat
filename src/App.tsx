@@ -4,6 +4,7 @@
  */
 
 import React, { useState } from 'react';
+import { safeStorage } from './lib/storage';
 import { LanguageProvider, useLanguage } from './modules/i18n/LanguageContext';
 import { AuthProvider, useAuth } from './modules/auth/AuthContext';
 import { PatientAuthProvider, usePatientAuth } from './modules/patient-portal/PatientAuthContext';
@@ -28,6 +29,11 @@ import { CashPriceListView } from './modules/pricing/CashPriceListView';
 import { InsuranceManagementView } from './modules/insurance/InsuranceManagementView';
 import { CustomServicesReviewView } from './modules/pricing/CustomServicesReviewView';
 import { SupplierManagementView } from './modules/suppliers/SupplierManagementView';
+import { InventoryManagementView } from './modules/inventory/InventoryManagementView';
+import { CommunicationCenterView } from './modules/communication/CommunicationCenterView';
+import { DoctorAIAssistantView } from './modules/ai/DoctorAIAssistantView';
+import { ManagerAIAssistantView } from './modules/ai/ManagerAIAssistantView';
+
 
 import { DoctorWorkspace } from './modules/clinical/DoctorWorkspace';
 import { LabUserWorkspace } from './modules/clinical/LabUserWorkspace';
@@ -68,7 +74,16 @@ const MainLayout: React.FC<MainLayoutProps> = ({ onSwitchToPatient }) => {
         return <CustomServicesReviewView />;
       case 'suppliers':
         return <SupplierManagementView />;
+      case 'inventory':
+        return <InventoryManagementView />;
+      case 'communication':
+        return <CommunicationCenterView />;
+      case 'managerAI':
+        return <ManagerAIAssistantView />;
+      case 'doctorAI':
+        return <DoctorAIAssistantView />;
       case 'organization':
+
         return <OrganizationView />;
       case 'branches':
         return <BranchList />;
@@ -133,20 +148,15 @@ const PatientPortalEntry: React.FC<{ onSwitchToStaff: () => void }> = ({ onSwitc
 export default function App() {
   const [portalMode, setPortalMode] = useState<'staff' | 'patient'>(() => {
     try {
-      if (typeof window !== 'undefined' && window.localStorage) {
-        return (localStorage.getItem('dental_portal_mode') as 'staff' | 'patient') || 'patient';
-      }
+      return (safeStorage.getItem('dental_portal_mode') as 'staff' | 'patient') || 'patient';
     } catch {
-      // ignore
+      return 'patient';
     }
-    return 'patient';
   });
 
   const handleSwitchPortal = (mode: 'staff' | 'patient') => {
     try {
-      if (typeof window !== 'undefined' && window.localStorage) {
-        localStorage.setItem('dental_portal_mode', mode);
-      }
+      safeStorage.setItem('dental_portal_mode', mode);
     } catch {
       // ignore
     }

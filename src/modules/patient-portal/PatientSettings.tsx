@@ -6,6 +6,7 @@ import {
   verifyPin,
   validatePinRules,
 } from './utils/pinSecurity';
+import { safeStorage } from '../../lib/storage';
 import {
   getStoredAccounts,
   PATIENT_STORAGE_KEYS,
@@ -82,7 +83,7 @@ export const PatientSettings: React.FC = () => {
       accounts[accIndex].pin_salt = newSalt;
       accounts[accIndex].pin_hash = newHash;
       accounts[accIndex].updated_at = new Date().toISOString();
-      localStorage.setItem(PATIENT_STORAGE_KEYS.ACCOUNTS, JSON.stringify(accounts));
+      safeStorage.setItem(PATIENT_STORAGE_KEYS.ACCOUNTS, JSON.stringify(accounts));
 
       // Update in-memory session account
       session.account.pin_salt = newSalt;

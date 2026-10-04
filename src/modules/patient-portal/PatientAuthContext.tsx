@@ -11,7 +11,7 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Patient, PatientSession } from '../../types/patient';
-import { DEFAULT_EGYPT_ORG } from '../../lib/storage';
+import { DEFAULT_EGYPT_ORG, safeStorage } from '../../lib/storage';
 import {
   getStoredAccounts,
   getStoredPatients,
@@ -47,7 +47,7 @@ export const PatientAuthProvider: React.FC<{ children: React.ReactNode }> = ({ c
   // Restore stored session on mount
   useEffect(() => {
     try {
-      const stored = localStorage.getItem(PATIENT_STORAGE_KEYS.CURRENT_SESSION);
+      const stored = safeStorage.getItem(PATIENT_STORAGE_KEYS.CURRENT_SESSION);
       if (stored) {
         const parsed: PatientSession = JSON.parse(stored);
         // Verify RLS validity on restoration
@@ -64,7 +64,7 @@ export const PatientAuthProvider: React.FC<{ children: React.ReactNode }> = ({ c
             availableProfiles: freshProfiles,
           });
         } else {
-          localStorage.removeItem(PATIENT_STORAGE_KEYS.CURRENT_SESSION);
+          safeStorage.removeItem(PATIENT_STORAGE_KEYS.CURRENT_SESSION);
         }
       }
     } catch {
@@ -133,7 +133,7 @@ export const PatientAuthProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
     setSession(newSession);
     try {
-      localStorage.setItem(PATIENT_STORAGE_KEYS.CURRENT_SESSION, JSON.stringify(newSession));
+      safeStorage.setItem(PATIENT_STORAGE_KEYS.CURRENT_SESSION, JSON.stringify(newSession));
     } catch {
       // ignore
     }
@@ -172,7 +172,7 @@ export const PatientAuthProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
     setSession(updatedSession);
     try {
-      localStorage.setItem(PATIENT_STORAGE_KEYS.CURRENT_SESSION, JSON.stringify(updatedSession));
+      safeStorage.setItem(PATIENT_STORAGE_KEYS.CURRENT_SESSION, JSON.stringify(updatedSession));
     } catch {
       // ignore
     }
@@ -215,7 +215,7 @@ export const PatientAuthProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
     setSession(updatedSession);
     try {
-      localStorage.setItem(PATIENT_STORAGE_KEYS.CURRENT_SESSION, JSON.stringify(updatedSession));
+      safeStorage.setItem(PATIENT_STORAGE_KEYS.CURRENT_SESSION, JSON.stringify(updatedSession));
     } catch {
       // ignore
     }
@@ -245,7 +245,7 @@ export const PatientAuthProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const logout = () => {
     setSession(null);
     try {
-      localStorage.removeItem(PATIENT_STORAGE_KEYS.CURRENT_SESSION);
+      safeStorage.removeItem(PATIENT_STORAGE_KEYS.CURRENT_SESSION);
     } catch {
       // ignore
     }

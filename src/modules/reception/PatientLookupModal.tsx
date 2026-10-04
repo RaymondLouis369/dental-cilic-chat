@@ -20,6 +20,8 @@ import {
   updateAppointmentStatus,
   addWaitingListEntry,
 } from '../../lib/receptionAndBillingStorage';
+import { resolveAppointmentCheckInToken } from '../../lib/appointmentService';
+import { DEFAULT_EGYPT_ORG } from '../../lib/storage';
 import { getStoredPatients } from '../../lib/patientStorage';
 import { Patient } from '../../types/patient';
 import { Appointment } from '../../types/receptionAndBilling';
@@ -79,6 +81,35 @@ export const PatientLookupModal: React.FC<PatientLookupModalProps> = ({
 
     const token = qrToken.trim();
     if (!token) return;
+
+    // Handle appointment check-in token (e.g. CHK-APT-...)
+    if (token.toUpperCase().startsWith('CHK-APT-')) {
+      const res = resolveAppointmentCheckInToken(token, {
+        organizationId: session?.profile.organization_id || DEFAULT_EGYPT_ORG.id,
+        assignedBranchIds: session?.profile.branch_id ? [session.profile.branch_id] : undefined,
+        profileId: session?.profile.id,
+        roleKey: session?.profile.role_key,
+      });
+
+      if (res.success && res.appointment) {
+        const pat = patients.find((p) => p.id === res.appointment?.patient_id);
+        if (pat) setSelectedPatient(pat);
+        setActionMessage({
+          type: 'success',
+          text: isAr
+            ? `تم تسجيل وصول المريض بنجاح بالرمز السريع! (${res.appointment.appointment_date} ${res.appointment.start_time})`
+            : `Appointment check-in verified via QR token! (${res.appointment.appointment_date} ${res.appointment.start_time})`,
+        });
+        if (onCheckinSuccess) onCheckinSuccess();
+        return;
+      } else {
+        setActionMessage({
+          type: 'error',
+          text: res.error || (isAr ? 'رمز الوصول السريع غير صحيح أو غير مصرح به' : 'Invalid or unauthorized check-in token'),
+        });
+        return;
+      }
+    }
 
     // Search patient by qr_token or patient_code
     const match = patients.find(

@@ -48,6 +48,8 @@ import {
 import { getStoredBranches, getStoredStaffUsers } from '../lib/storage';
 import { getStoredDoctorTasks, getStoredLabOrders } from '../lib/clinicalStorage';
 import { Invoice } from '../types/receptionAndBilling';
+import { AdvancedManagementBI } from '../modules/analytics/AdvancedManagementBI';
+
 
 export const DashboardPlaceholder: React.FC = () => {
   const { session, isOrgWideManager, accessibleBranches } = useAuth();
@@ -1252,6 +1254,12 @@ export const DashboardPlaceholder: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* Wave 3: Advanced Management BI & Executive Analytics */}
+      <div className="pt-4 border-t border-slate-200">
+        <AdvancedManagementBI />
+      </div>
     </div>
   );
 };
+

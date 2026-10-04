@@ -72,6 +72,8 @@ export interface Branch {
   id: string;
   organization_id: string;
   name: string;
+  name_ar?: string;
+  name_en?: string;
   code: string;
   address: string;
   city: string; // e.g., 'Cairo', 'Alexandria', 'Giza'
@@ -88,11 +90,14 @@ export interface Profile {
   organization_id: string;
   role_id: string;
   role_key: RoleKey;
+  role?: string;
   display_name: string;
   email: string;
   phone?: string;
   active: boolean;
+  is_active?: boolean;
   branch_id?: string;
+  assignedBranchIds?: string[];
   created_at: string;
   updated_at: string;
 }
@@ -156,4 +161,15 @@ export * from './complaints';
 
 // Phase 10.3: Human Escalation Workflow
 export * from './escalation';
+
+// Wave 1: Finance, Patient Wallet, Loyalty, Insurance Prior Approvals & Claims
+export * from './financeAndInsurance';
+
+// Wave 2: Advanced Prosthetics, Lab Operations & Inventory Management
+export * from './inventory';
+
+// Wave 3: Communication Center, WhatsApp Messaging & Advanced BI
+export * from './communication';
+
+
 

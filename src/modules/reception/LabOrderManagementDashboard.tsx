@@ -50,6 +50,7 @@ import { Patient } from '../../types/patient';
 import { Branch, StaffUser } from '../../types';
 import { QrCodeSvg, generateLabOrderQrPayload } from '../../lib/labQrUtils';
 import { LabOrderChatModal } from '../clinical/LabOrderChatModal';
+import { ProstheticFittingAndModificationModal } from '../lab/ProstheticFittingAndModificationModal';
 
 // Helper: Web Audio API Scan Chime
 function playScanChime() {
@@ -719,6 +720,7 @@ export const LabOrderManagementDashboard: React.FC<LabOrderManagementDashboardPr
   const [showScannerModal, setShowScannerModal] = useState(false);
   const [selectedOrderForQr, setSelectedOrderForQr] = useState<LabOrder | null>(null);
   const [selectedOrderForChat, setSelectedOrderForChat] = useState<LabOrder | null>(null);
+  const [selectedOrderForFitting, setSelectedOrderForFitting] = useState<LabOrder | null>(null);
 
   const refreshData = () => setRefreshKey((k) => k + 1);
 
@@ -1705,6 +1707,15 @@ export const LabOrderManagementDashboard: React.FC<LabOrderManagementDashboardPr
                       );
                     })()}
 
+                    {/* Prosthetic Trial & Modification Button */}
+                    <button
+                      type="button"
+                      onClick={() => setSelectedOrderForFitting(order)}
+                      className="px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-900 rounded-xl text-xs font-bold flex items-center gap-1 border border-blue-200 transition-all"
+                    >
+                      <span>{isAr ? 'البروفة والتعديل' : 'Trial & Mod'}</span>
+                    </button>
+
                     {/* Quick Mark Delivered Button */}
                     {(order.status === 'sent_to_lab' || order.status === 'in_production') && (
                       <button
@@ -1949,6 +1960,16 @@ export const LabOrderManagementDashboard: React.FC<LabOrderManagementDashboardPr
             setSelectedOrderForChat(null);
             refreshData();
           }}
+        />
+      )}
+
+      {/* Prosthetic Trial & Modification Modal */}
+      {selectedOrderForFitting && (
+        <ProstheticFittingAndModificationModal
+          isOpen={!!selectedOrderForFitting}
+          order={selectedOrderForFitting}
+          onClose={() => setSelectedOrderForFitting(null)}
+          onOrderUpdated={refreshData}
         />
       )}
     </div>

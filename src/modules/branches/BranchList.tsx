@@ -61,7 +61,7 @@ export const BranchList: React.FC = () => {
 
     const updated = [...branches, newBranch];
     setBranches(updated);
-    localStorage.setItem('dental_saas_branches', JSON.stringify(updated));
+    safeStorage.setItem('dental_saas_branches', JSON.stringify(updated));
 
     appendAuditLog({
       organization_id: session.organization.id,

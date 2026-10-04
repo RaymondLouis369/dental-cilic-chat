@@ -257,37 +257,61 @@ const STORAGE_KEYS = {
   LANGUAGE: 'dental_saas_lang',
 };
 
-// Safe storage fallback for environments without global localStorage (e.g. Node.js vitest runner)
+// Centralized safe storage fallback for environments without global or accessible localStorage (e.g. iframe SecurityError, Node.js vitest runner)
 const memoryStore = new Map<string, string>();
+
+function getLocalStorage(): Storage | null {
+  try {
+    if (typeof window !== 'undefined' && 'localStorage' in window && window.localStorage) {
+      return window.localStorage;
+    }
+  } catch {
+    // Reading window.localStorage throws SecurityError in restricted iframe contexts
+  }
+  return null;
+}
 
 export const safeStorage = {
   getItem(key: string): string | null {
-    if (typeof window !== 'undefined' && typeof window.localStorage !== 'undefined') {
-      try {
-        return window.localStorage.getItem(key);
-      } catch {
-        return memoryStore.get(key) ?? null;
-      }
+    try {
+      const ls = getLocalStorage();
+      if (ls) return ls.getItem(key);
+    } catch {
+      // fallback
     }
     return memoryStore.get(key) ?? null;
   },
   setItem(key: string, value: string): void {
-    if (typeof window !== 'undefined' && typeof window.localStorage !== 'undefined') {
-      try {
-        window.localStorage.setItem(key, value);
-      } catch {
-        // fallback
+    try {
+      const ls = getLocalStorage();
+      if (ls) {
+        ls.setItem(key, value);
+        return;
       }
+    } catch {
+      // fallback
     }
     memoryStore.set(key, value);
   },
-  clear(): void {
-    if (typeof window !== 'undefined' && typeof window.localStorage !== 'undefined') {
-      try {
-        window.localStorage.clear();
-      } catch {
-        // fallback
+  removeItem(key: string): void {
+    try {
+      const ls = getLocalStorage();
+      if (ls) {
+        ls.removeItem(key);
       }
+    } catch {
+      // fallback
+    }
+    memoryStore.delete(key);
+  },
+  clear(): void {
+    try {
+      const ls = getLocalStorage();
+      if (ls) {
+        ls.clear();
+      }
+    } catch {
+      // fallback
     }
     memoryStore.clear();
   },

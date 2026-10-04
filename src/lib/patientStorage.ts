@@ -440,10 +440,30 @@ export async function authenticatePatientCredentials(
  * - Supplying an unauthorized patient_id from the client fails immediately.
  */
 export function simulatePatientRLS(
-  authenticatedPatientId: string,
-  targetPatientId: string,
-  organizationId: string
+  authenticatedPatientIdOrInput:
+    | string
+    | {
+        authenticatedPatientId?: string;
+        targetPatientId?: string;
+        organizationId?: string;
+      },
+  targetPatientIdParam?: string,
+  organizationIdParam?: string
 ): { allowed: boolean; patient?: Patient; error?: string } {
+  let authenticatedPatientId: string;
+  let targetPatientId: string;
+  let organizationId: string;
+
+  if (typeof authenticatedPatientIdOrInput === 'object' && authenticatedPatientIdOrInput !== null) {
+    authenticatedPatientId = authenticatedPatientIdOrInput.authenticatedPatientId || '';
+    targetPatientId = authenticatedPatientIdOrInput.targetPatientId || '';
+    organizationId = authenticatedPatientIdOrInput.organizationId || '';
+  } else {
+    authenticatedPatientId = (authenticatedPatientIdOrInput as string) || '';
+    targetPatientId = targetPatientIdParam || '';
+    organizationId = organizationIdParam || '';
+  }
+
   const allPatients = getStoredPatients();
   const guardians = getStoredGuardians();
 

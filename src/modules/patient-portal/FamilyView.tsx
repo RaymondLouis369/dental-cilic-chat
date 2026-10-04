@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { safeStorage } from '../../lib/storage';
 import { useLanguage } from '../i18n/LanguageContext';
 import { usePatientAuth } from './PatientAuthContext';
 import {
@@ -199,7 +200,7 @@ export const FamilyView: React.FC = () => {
     };
 
     allGuardians.push(newGuardianRel);
-    localStorage.setItem(PATIENT_STORAGE_KEYS.GUARDIANS, JSON.stringify(allGuardians));
+    safeStorage.setItem(PATIENT_STORAGE_KEYS.GUARDIANS, JSON.stringify(allGuardians));
 
     // Link to family if exists
     if (myFamily) {
@@ -211,7 +212,7 @@ export const FamilyView: React.FC = () => {
         created_at: new Date().toISOString(),
       };
       allFamilyMembers.push(newFm);
-      localStorage.setItem(PATIENT_STORAGE_KEYS.FAMILY_MEMBERS, JSON.stringify(allFamilyMembers));
+      safeStorage.setItem(PATIENT_STORAGE_KEYS.FAMILY_MEMBERS, JSON.stringify(allFamilyMembers));
     }
 
     setIsSubmitting(false);

@@ -25,9 +25,10 @@ import {
 } from '../../lib/receptionAndBillingStorage';
 import { getStoredPatients } from '../../lib/patientStorage';
 import { getStoredBranches, getStoredStaffUsers } from '../../lib/storage';
-import { Service, PricingResolutionResult } from '../../types/receptionAndBilling';
+import { Service, PricingResolutionResult, AppointmentType } from '../../types/receptionAndBilling';
 import { Patient } from '../../types/patient';
 import { Branch, StaffUser } from '../../types';
+import { getStoredTreatmentPlans } from '../../lib/clinicalStorage';
 
 interface NewBookingModalProps {
   isOpen: boolean;
@@ -63,6 +64,8 @@ export const NewBookingModal: React.FC<NewBookingModalProps> = ({ isOpen, onClos
   );
   const [selectedSlotTime, setSelectedSlotTime] = useState<string>('');
   const [serviceId, setServiceId] = useState<string>('');
+  const [appointmentType, setAppointmentType] = useState<AppointmentType>('general');
+  const [treatmentPlanId, setTreatmentPlanId] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
 
   // Insurance / Pricing
@@ -144,10 +147,11 @@ export const NewBookingModal: React.FC<NewBookingModalProps> = ({ isOpen, onClos
   // Load available time slots whenever doctor, branch, or date changes
   useEffect(() => {
     if (doctorId && branchId && bookingDate) {
-      const slots = getDoctorAvailableSlots(doctorId, branchId, bookingDate);
-      setAvailableSlots(slots);
-      if (slots.length > 0) {
-        setSelectedSlotTime(slots[0]);
+      const slotObjs = getDoctorAvailableSlots(doctorId, branchId, bookingDate);
+      const availables = slotObjs.filter((s) => s.available).map((s) => s.slot);
+      setAvailableSlots(availables);
+      if (availables.length > 0) {
+        setSelectedSlotTime(availables[0]);
       } else {
         setSelectedSlotTime('');
       }
@@ -227,9 +231,12 @@ export const NewBookingModal: React.FC<NewBookingModalProps> = ({ isOpen, onClos
           doctor_id: doctorId,
           service_id: serviceId,
           appointment_date: bookingDate,
+          date: bookingDate,
           start_time: selectedSlotTime,
           end_time: endTimeStr,
           status: 'confirmed',
+          appointment_type: appointmentType,
+          treatment_plan_id: treatmentPlanId || undefined,
           notes,
           booked_by_staff_id: session?.profile.id || 'usr_staff_01',
         },
@@ -551,6 +558,51 @@ export const NewBookingModal: React.FC<NewBookingModalProps> = ({ isOpen, onClos
 
           {/* Service & Pricing */}
           <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+            {/* Appointment Type & Treatment Plan Linkage */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pb-2 border-b border-slate-200/80">
+              <div>
+                <label className="block text-xs font-bold text-slate-800 mb-1 flex items-center gap-1.5">
+                  <Stethoscope className="w-3.5 h-3.5 text-teal-600" />
+                  {isAr ? 'نوع الموعد' : 'Appointment Type'}
+                </label>
+                <select
+                  value={appointmentType}
+                  onChange={(e) => setAppointmentType(e.target.value as AppointmentType)}
+                  className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg font-medium"
+                >
+                  <option value="consultation">{isAr ? 'استشارة' : 'Consultation'}</option>
+                  <option value="treatment">{isAr ? 'علاج' : 'Treatment'}</option>
+                  <option value="follow_up">{isAr ? 'متابعة' : 'Follow-Up'}</option>
+                  <option value="cleaning">{isAr ? 'تنظيف' : 'Cleaning'}</option>
+                  <option value="prosthetic">{isAr ? 'تركيبات' : 'Prosthetic'}</option>
+                  <option value="orthodontic">{isAr ? 'تقويم' : 'Orthodontic'}</option>
+                  <option value="emergency">{isAr ? 'طوارئ' : 'Emergency'}</option>
+                  <option value="general">{isAr ? 'عام' : 'General'}</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-800 mb-1 flex items-center gap-1.5">
+                  <FileText className="w-3.5 h-3.5 text-teal-600" />
+                  {isAr ? 'ربط بخطة علاجية (اختياري)' : 'Link Treatment Plan (Optional)'}
+                </label>
+                <select
+                  value={treatmentPlanId}
+                  onChange={(e) => setTreatmentPlanId(e.target.value)}
+                  className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg text-slate-700"
+                >
+                  <option value="">{isAr ? 'بدون ربط بخطة' : 'None / Direct Service'}</option>
+                  {getStoredTreatmentPlans()
+                    .filter((tp) => !selectedPatientId || tp.patient_id === selectedPatientId)
+                    .map((tp) => (
+                      <option key={tp.id} value={tp.id}>
+                        {tp.title || (isAr ? 'خطة علاج' : 'Plan')} #{tp.id.substring(0, 8)} ({tp.status})
+                      </option>
+                    ))}
+                </select>
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-bold text-slate-800 mb-1 flex items-center gap-1.5">

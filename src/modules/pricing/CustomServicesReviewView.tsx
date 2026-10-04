@@ -269,7 +269,7 @@ export const CustomServicesReviewView: React.FC = () => {
                   )}
                 </div>
 
-                {item.status === 'pending' && session?.role.key === 'center_manager' && (
+                {(item.status === 'pending_review' || (item.status as string) === 'pending') && session?.role.key === 'center_manager' && (
                   <div className="pt-2 border-t border-slate-100 flex justify-end">
                     <button
                       type="button"

@@ -13,6 +13,7 @@ import { ProfileChooserModal } from './ProfileChooserModal';
 import { ProfileDropdown } from './ProfileDropdown';
 import { ActivePatientBanner } from './ActivePatientBanner';
 import { calculateAge, getAgeGroup } from '../../types/patient';
+import { PatientFinancialPortal } from './PatientFinancialPortal';
 import {
   Home,
   QrCode,
@@ -27,10 +28,12 @@ import {
   Globe,
   ArrowRightLeft,
   MessageSquare,
+  DollarSign,
 } from 'lucide-react';
 
 export type PatientPortalTab =
   | 'home'
+  | 'finance'
   | 'digitalCard'
   | 'profile'
   | 'family'
@@ -62,6 +65,8 @@ export const PatientPortalShell: React.FC<PatientPortalShellProps> = ({ onSwitch
     switch (activeTab) {
       case 'home':
         return <PatientHome onNavigate={(tab) => setActiveTab(tab)} />;
+      case 'finance':
+        return <PatientFinancialPortal />;
       case 'digitalCard':
         return <DigitalPatientCard />;
       case 'profile':
@@ -83,6 +88,11 @@ export const PatientPortalShell: React.FC<PatientPortalShellProps> = ({ onSwitch
 
   const navItems = [
     { id: 'home' as PatientPortalTab, label: t.patientPortal.home, icon: Home },
+    {
+      id: 'finance' as PatientPortalTab,
+      label: language === 'ar' ? 'الحسابات والمحفظة' : 'Finance & Wallet',
+      icon: DollarSign,
+    },
     {
       id: 'aiChat' as PatientPortalTab,
       label: language === 'ar' ? 'الدردشة الذكية' : 'AI Assistant',

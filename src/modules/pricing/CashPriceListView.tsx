@@ -290,7 +290,7 @@ export const CashPriceListView: React.FC = () => {
           priceListId: defaultCashList.id,
           effectiveFrom,
           notes,
-          validRows: excelResult.validRows,
+          validRows: excelResult.rows.filter((r) => r.is_valid),
           publishedByStaffId: session?.profile.id || 'usr_staff_01',
         });
         if (res.success && res.newVersion) {
@@ -315,7 +315,7 @@ export const CashPriceListView: React.FC = () => {
           companyId: selectedCompanyId,
           planId: selectedPlanId || undefined,
           name: nameTag,
-          validRows: excelResult.validRows,
+          validRows: excelResult.rows.filter((r) => r.is_valid),
           effectiveFrom,
           notes,
           actorUserId: session?.profile.id || 'usr_staff_01',

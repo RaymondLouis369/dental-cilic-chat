@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { isDevEnv } from '../../lib/env';
 import { useLanguage } from '../i18n/LanguageContext';
 import { usePatientAuth } from './PatientAuthContext';
 import { ForgotPinModal } from './ForgotPinModal';
@@ -175,7 +176,7 @@ export const PatientLogin: React.FC<PatientLoginProps> = ({ onSwitchToStaff }) =
           </div>
 
           {/* Development Demo Accounts Helper */}
-          {import.meta.env.DEV && (
+          {isDevEnv() && (
             <div className="p-3.5 rounded-xl bg-slate-900/90 border border-slate-700/80 space-y-2 text-xs">
               <span className="font-bold text-teal-400 flex items-center gap-1.5 text-[11px] uppercase tracking-wider">
                 <ShieldCheck className="w-3.5 h-3.5" />

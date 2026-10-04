@@ -18,7 +18,12 @@ import {
   getStoredDoctorShifts,
   saveDoctorShift,
 } from '../../lib/receptionAndBillingStorage';
-import { getStoredBranches, getStoredStaffUsers } from '../../lib/storage';
+import { getStoredBranches, getStoredStaffUsers, DEFAULT_EGYPT_ORG } from '../../lib/storage';
+import {
+  getDoctorWaitingQueue,
+  callNextQueuePatient,
+  updateAppointmentStatus,
+} from '../../lib/appointmentService';
 import { DoctorShift } from '../../types/receptionAndBilling';
 import { Branch, StaffUser } from '../../types';
 
@@ -162,6 +167,34 @@ export const DoctorScheduleView: React.FC = () => {
     }
   };
 
+  // Doctor Caller Context
+  const doctorCallerContext = useMemo(() => {
+    return {
+      organizationId: session?.profile?.organization_id || DEFAULT_EGYPT_ORG.id,
+      profileId: session?.profile?.id || selectedDoctorId || doctors[0]?.id,
+      roleKey: (session?.profile?.role_key || 'doctor') as any,
+      assignedBranchIds: selectedBranchId !== 'all' ? [selectedBranchId] : undefined,
+      isOrgWideManager: session?.profile?.role_key === 'center_manager',
+    };
+  }, [session, selectedDoctorId, doctors, selectedBranchId]);
+
+  // Active Doctor Queue Data
+  const doctorQueueData = useMemo(() => {
+    return getDoctorWaitingQueue(doctorCallerContext, selectedBranchId === 'all' ? undefined : selectedBranchId);
+  }, [doctorCallerContext, selectedBranchId, refreshKey]);
+
+  const handleCallNext = () => {
+    const res = callNextQueuePatient(doctorCallerContext, selectedBranchId === 'all' ? undefined : selectedBranchId);
+    if (res.success) {
+      setSuccessMsg(isAr ? 'تم استدعاء المريض التالي بنجاح!' : 'Next patient called successfully!');
+      setTimeout(() => setSuccessMsg(null), 3000);
+      refresh();
+    } else {
+      setError(res.error || (isAr ? 'لا يوجد مرضى بانتظار العيادة حالياً' : 'No waiting patients in queue'));
+      setTimeout(() => setError(null), 3000);
+    }
+  };
+
   // Filtered shifts for grid view
   const visibleShifts = useMemo(() => {
     return shifts.filter((s) => {
@@ -202,12 +235,126 @@ export const DoctorScheduleView: React.FC = () => {
         </button>
       </div>
 
+      {error && (
+        <div className="p-3 bg-red-50 border border-red-200 text-red-800 rounded-xl text-xs flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 shrink-0" />
+          <span>{error}</span>
+        </div>
+      )}
+
       {successMsg && (
         <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs flex items-center gap-2">
           <Check className="w-4 h-4 shrink-0" />
           <span>{successMsg}</span>
         </div>
       )}
+
+      {/* Active Doctor Waiting Queue Section */}
+      <div className="bg-gradient-to-br from-teal-900 to-slate-900 text-white p-5 rounded-2xl border border-teal-700 shadow-md space-y-4 text-xs">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-teal-800/80 pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-teal-500/20 text-teal-300 border border-teal-400/30 flex items-center justify-center font-bold">
+              <Stethoscope className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="font-bold text-sm text-white">
+                {isAr ? 'طابور المرضى النشط للطبيب اليوم' : 'Doctor Active Patient Waiting Queue'}
+              </h3>
+              <p className="text-[11px] text-teal-200">
+                {isAr ? 'عرض المرضى في قائمة الانتظار الحالية واستدعاء الدخول للعيادة' : 'Live waiting queue for authorized branch'}
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleCallNext}
+            disabled={doctorQueueData.active_queue.length === 0}
+            className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-40 text-slate-950 font-bold rounded-xl shadow-md transition-all flex items-center gap-1.5"
+          >
+            <Stethoscope className="w-4 h-4" />
+            <span>{isAr ? '⚡ استدعاء المريض التالي بالطابور' : '⚡ Call Next Patient'}</span>
+          </button>
+        </div>
+
+        {doctorQueueData.active_queue.length === 0 ? (
+          <div className="p-4 bg-teal-950/40 rounded-xl border border-teal-800/50 text-center text-teal-200">
+            {isAr ? 'لا يوجد مرضى في طابور الانتظار حالياً لهذه العيادة.' : 'No waiting patients in queue for this branch right now.'}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+            {doctorQueueData.active_queue.map((item) => (
+              <div
+                key={item.appointment.id}
+                className={`p-3.5 rounded-xl border flex flex-col justify-between space-y-2 ${
+                  item.status === 'with_doctor'
+                    ? 'bg-teal-600 text-white border-teal-400 font-bold shadow-md'
+                    : 'bg-teal-950/60 text-teal-100 border-teal-800'
+                }`}
+              >
+                <div className="flex items-center justify-between border-b border-white/10 pb-2">
+                  <span className="px-2 py-0.5 rounded font-mono font-black text-[11px] bg-black/30">
+                    #{item.queue_position}
+                  </span>
+                  <span className="font-bold text-[11px] uppercase">
+                    {item.status === 'with_doctor'
+                      ? isAr ? 'داخل بالعيادة' : 'With Doctor'
+                      : isAr ? 'في الانتظار' : 'Waiting'}
+                  </span>
+                </div>
+
+                <div>
+                  <div className="font-bold text-sm text-white">{item.patient_name}</div>
+                  <div className="text-[11px] text-teal-200 font-mono">
+                    {item.patient_code} • {item.scheduled_time}
+                  </div>
+                  <div className="flex items-center justify-between text-[10px] text-teal-300 mt-1">
+                    <span>{isAr ? 'انتظار:' : 'Wait:'} {item.waiting_time_minutes} {isAr ? 'دقيقة' : 'mins'}</span>
+                    <span className={`px-1.5 py-0.5 rounded font-bold ${
+                      item.appointment.confirmation_status === 'patient_confirmed' || item.appointment.confirmation_status === 'reception_confirmed'
+                        ? 'bg-emerald-500/30 text-emerald-200 border border-emerald-400/30'
+                        : 'bg-amber-500/30 text-amber-200 border border-amber-400/30'
+                    }`}>
+                      {item.appointment.confirmation_status === 'patient_confirmed'
+                        ? (isAr ? 'مؤكد (مريض)' : 'Confirmed (Patient)')
+                        : item.appointment.confirmation_status === 'reception_confirmed'
+                        ? (isAr ? 'مؤكد (استقبال)' : 'Confirmed (Reception)')
+                        : (isAr ? 'غير مؤكد' : 'Unconfirmed')}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-white/10 flex gap-1">
+                  {item.status !== 'with_doctor' && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        updateAppointmentStatus(item.appointment.id, 'with_doctor', undefined, doctorCallerContext);
+                        refresh();
+                      }}
+                      className="flex-1 py-1 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold rounded-lg text-[10px]"
+                    >
+                      {isAr ? 'ادخل العيادة' : 'Call In'}
+                    </button>
+                  )}
+                  {item.status === 'with_doctor' && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        updateAppointmentStatus(item.appointment.id, 'completed', undefined, doctorCallerContext);
+                        refresh();
+                      }}
+                      className="flex-1 py-1 bg-white hover:bg-slate-100 text-teal-950 font-bold rounded-lg text-[10px]"
+                    >
+                      {isAr ? 'إكمال الزيارة' : 'Mark Completed'}
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* Filters */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm text-xs">

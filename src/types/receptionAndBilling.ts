@@ -27,6 +27,8 @@ export interface DentalService {
   category: string;
   default_duration_minutes: number;
   duration_minutes?: number;
+  price?: number;
+  base_price?: number;
   requires_approval: boolean;
   requires_doctor: boolean;
   default_supplier_id?: string;
@@ -59,39 +61,12 @@ export interface DoctorShift {
   updated_at: string;
 }
 
-export type AppointmentStatus =
-  | 'confirmed'
-  | 'arrived'
-  | 'waiting'
-  | 'with_doctor'
-  | 'completed'
-  | 'cancelled'
-  | 'no_show'
-  | 'rescheduled'
-  | 'late';
-
-export type BookingType = 'scheduled' | 'walk_in';
-
-export interface Appointment {
-  id: string;
-  organization_id: string;
-  branch_id: string;
-  patient_id: string;
-  doctor_id: string;
-  service_id?: string;
-  appointment_date: string; // YYYY-MM-DD
-  start_time: string; // HH:MM
-  end_time: string; // HH:MM
-  duration_minutes: number;
-  status: AppointmentStatus;
-  booking_type: BookingType;
-  notes?: string;
-  cancellation_reason?: string;
-  check_in_time?: string;
-  created_by?: string;
-  created_at: string;
-  updated_at: string;
-}
+export type {
+  AppointmentStatus,
+  AppointmentType,
+  BookingType,
+  Appointment,
+} from './appointment';
 
 export type WaitingPriority = 'normal' | 'urgent' | 'vip';
 export type WaitingStatus = 'waiting' | 'called' | 'with_doctor' | 'completed' | 'cancelled' | 'left';
@@ -109,6 +84,7 @@ export interface WaitingListEntry {
   ticket_number: string;
   check_in_time: string;
   estimated_wait_minutes: number;
+  chief_complaint?: string;
   notes?: string;
   created_at: string;
   updated_at: string;
@@ -260,12 +236,18 @@ export interface CustomPatientService {
   patient_id: string;
   appointment_id?: string;
   service_name: string;
+  custom_service_name?: string;
   patient_price: number;
+  agreed_patient_price?: number;
   reason: string;
   created_by?: string;
+  created_by_staff_id?: string;
+  reviewed_by_staff_id?: string;
   status: CustomServiceStatus;
   assigned_standard_service_id?: string;
   supplier_vendor_cost?: number;
+  actual_supplier_cost?: number;
+  admin_notes?: string;
   notes?: string;
   created_at: string;
   updated_at: string;
@@ -287,6 +269,9 @@ export interface ExcelImportResult {
   total_rows: number;
   valid_rows: number;
   invalid_rows: number;
+  totalRows?: number;
+  validRows?: number;
+  invalidRows?: number;
   rows: ExcelRowValidation[];
 }
 
@@ -298,6 +283,12 @@ export interface PricingResolutionResult {
   coverage_percentage: number;
   copay_percentage: number;
   requires_approval: boolean;
+  pricing_tier?: string;
+  base_price?: number;
+  insurance_coverage_amount?: number;
+  final_patient_price?: number;
+  applied_discount_percent?: number;
+  explanation?: string;
   message_ar?: string;
   message_en?: string;
 }

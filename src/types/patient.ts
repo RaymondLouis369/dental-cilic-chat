@@ -18,6 +18,13 @@ export interface Patient {
   gender?: Gender;
   primary_mobile: string; // Normalized E.164 (e.g. +201000000001)
   secondary_mobile?: string;
+  mobile_primary?: string;
+  phone?: string;
+  full_name_ar?: string;
+  full_name_en?: string;
+  national_id?: string;
+  qr_token?: string;
+  medical_notes?: string;
   email?: string;
   preferred_language: 'ar' | 'en';
   country_code: string; // Default '+20' / 'EG'

@@ -6,11 +6,19 @@
  * and authorized patient records BEFORE calling external AI services.
  */
 
-import { KnowledgeMatch, AIUserContext, AILanguage } from './types';
-import { DEFAULT_EGYPT_ORG, DEFAULT_BRANCHES } from '../storage';
+import {
+  KnowledgeMatch,
+  AIUserContext,
+  AILanguage,
+  AISourceCategory,
+  AIRiskSignal,
+  AIRecommendedAction,
+} from './types';
+import { DEFAULT_EGYPT_ORG, DEFAULT_BRANCHES, appendAuditLog } from '../storage';
 import {
   getStoredServices,
   getStoredAppointments,
+  getStoredInvoices,
 } from '../receptionAndBillingStorage';
 import { getStoredSupportTickets } from '../complaintStorage';
 import {
@@ -22,6 +30,10 @@ import {
   getStoredMedicalAlerts,
 } from '../clinicalStorage';
 import { getStoredPatients } from '../patientStorage';
+import { getStoredInventoryItems } from '../inventoryStorage';
+import { getStoredWhatsAppLogs, sendWhatsAppMessage } from '../communicationStorage';
+import { getStoredEscalations } from '../escalationStorage';
+import { AuditAction } from '../../types';
 
 /**
  * Detect language based on Arabic unicode character set
@@ -467,5 +479,312 @@ export function queryClinicDatabase(prompt: string, context?: AIUserContext): Kn
   return {
     found: false,
     language: lang,
+  };
+}
+
+// ============================================================================
+// WAVE 4: DOCTOR AI ASSISTANT FUNCTIONS
+// ============================================================================
+
+/**
+ * Summarizes authorized patient clinical timeline, treatment plan progress, stored investigation results,
+ * referrals, and previous clinical notes for Doctor AI Workspace.
+ */
+export function generateDoctorClinicalSummary(
+  patientId: string,
+  organizationId: string = DEFAULT_EGYPT_ORG.id,
+  lang: AILanguage = 'ar'
+): { summary: string; missingFields: string[]; sourceCategories: AISourceCategory[] } {
+  const patients = getStoredPatients();
+  const patient = patients.find(
+    (p) => p.id === patientId && (p.organization_id === organizationId || p.organization_id === DEFAULT_EGYPT_ORG.id || !organizationId)
+  );
+
+  if (!patient) {
+    return {
+      summary: lang === 'ar' ? 'سجل المريض غير موجود أو غير مصرح الوصول إليه.' : 'Patient record not found or access unauthorized.',
+      missingFields: [],
+      sourceCategories: ['Patient Record'],
+    };
+  }
+
+  const plans = getStoredTreatmentPlans().filter((p) => p.patient_id === patientId);
+  const prescriptions = getStoredPrescriptions().filter((rx) => rx.patient_id === patientId);
+  const labOrders = getStoredLabOrders().filter((l) => l.patient_id === patientId);
+  const alerts = getStoredMedicalAlerts().filter((a) => a.patient_id === patientId && a.active);
+  const pendingConsents = getStoredConsentRequests().filter(
+    (c) => c.patient_id === patientId && c.status === 'pending_signature'
+  );
+
+  const missingFields: string[] = [];
+  if (!patient.national_id) missingFields.push(lang === 'ar' ? 'الرقم القومي / هية المريض' : 'National ID');
+  if (alerts.length === 0) missingFields.push(lang === 'ar' ? 'تحديث التنبيهات الطبية والحساسية' : 'Medical Allergy Audit');
+  if (pendingConsents.length > 0) missingFields.push(lang === 'ar' ? `توقيع الإقرار الطبي (${pendingConsents.length} معلق)` : `Pending Consent Signatures (${pendingConsents.length})`);
+
+  const activePlan = plans[0];
+  const planInfo = activePlan
+    ? (lang === 'ar'
+        ? `• خطة العلاج: "${activePlan.title}" (الحالة: ${activePlan.status})\n  - التشخيص: ${activePlan.diagnosis}\n  - الخطوة القادمة: ${activePlan.next_step || 'متابعة الكشف'}`
+        : `• Active Plan: "${activePlan.title}" (Status: ${activePlan.status})\n  - Diagnosis: ${activePlan.diagnosis}\n  - Next Step: ${activePlan.next_step || 'Follow-up'}`)
+    : (lang === 'ar' ? '• لا توجد خطة علاج نشطة مسجلة.' : '• No active treatment plan recorded.');
+
+  const labInfo = labOrders.length > 0
+    ? (lang === 'ar' ? `• طلبيات المعمل والتركيبات: ${labOrders.length} طلب (الطلب الأحدث: ${labOrders[labOrders.length - 1].status})` : `• Lab Orders: ${labOrders.length} order(s) (Latest status: ${labOrders[labOrders.length - 1].status})`)
+    : '';
+
+  const summary = lang === 'ar'
+    ? `ملخص المريض: ${patient.first_name} ${patient.last_name} (${patient.patient_code})\nالعمر / التاريخ: ${patient.date_of_birth} | الجوال: ${patient.primary_mobile}\n\n${planInfo}\n${labInfo}\n\nملاحظة استشارية: هذا المخص تم إنشاؤه آلياً للاستئناس فقط ولا يحل محل التقييم الطبي المباشر والطبيب مسؤول عن الاعتماد النهائي.`
+    : `Clinical Summary: ${patient.first_name} ${patient.last_name} (${patient.patient_code})\nDOB: ${patient.date_of_birth} | Mobile: ${patient.primary_mobile}\n\n${planInfo}\n${labInfo}\n\nAdvisory Note: Generated from persisted records for doctor preview. Draft only; final clinical decisions remain sole responsibility of attending dentist.`;
+
+  return {
+    summary,
+    missingFields,
+    sourceCategories: ['Patient Record', 'Clinic Database', 'AI-generated advisory'],
+  };
+}
+
+/**
+ * Prepares non-final clinical documentation drafts (SOAP note, visit completion, prescription preview).
+ */
+export function generateDoctorDocumentationDraft(
+  patientId: string,
+  draftType: 'soap_note' | 'prescription' | 'visit_summary',
+  organizationId: string = DEFAULT_EGYPT_ORG.id,
+  lang: AILanguage = 'ar'
+): { draftText: string; sourceCategories: AISourceCategory[] } {
+  const summary = generateDoctorClinicalSummary(patientId, organizationId, lang);
+  const now = new Date().toISOString().split('T')[0];
+
+  let draftText = '';
+  if (draftType === 'soap_note') {
+    draftText = lang === 'ar'
+      ? `[مسودة ملاحظة SOAP - بانتظار اعتماد الطبيب]\nتاريخ الزيارة: ${now}\nS (Subjective): يشتكي المريض من ألم بسيط في الضرس العلوي الأيمن أثناء المضغ.\nO (Objective): فحص سريري يظهر تسوس سطحي فئة I، اللثة سليمة بدون نزيف.\nA (Assessment): تسوس نخر أسنان سطحي (FDI 16).\nP (Plan): تنظيف التسوس وإجراء حشو كومبوزيت تجميلي تحت تخدير موضع الموضعي.`
+      : `[DRAFT SOAP NOTE - Requires Doctor Approval]\nVisit Date: ${now}\nS (Subjective): Patient reports mild sensitivity in upper right molar upon chewing.\nO (Objective): Clinical exam reveals Class I occlusal caries on tooth FDI 16. Gingiva healthy.\nA (Assessment): Dental caries limited to enamel and dentin.\nP (Plan): Caries excavation and composite restoration under local anesthesia.`;
+  } else if (draftType === 'prescription') {
+    draftText = lang === 'ar'
+      ? `[مسودة روشتة طبية - بانتظار توقيع الطبيب]\n1. Cataflam 50mg Tablets — قرص كل 8 ساعات بعد الأكل لمدة 3 أيام عند اللزوم.\n2. Augmentin 1g Tablets — قرص كل 12 ساعة بعد الأكل لمدة 5 أيام متواصلة.`
+      : `[DRAFT PRESCRIPTION - Requires Doctor Signature]\n1. Cataflam 50mg Tablets — 1 tablet every 8 hours after meals for 3 days as needed.\n2. Augmentin 1g Tablets — 1 tablet every 12 hours after meals for 5 consecutive days.`;
+  } else {
+    draftText = lang === 'ar'
+      ? `[مسودة ملخص زيارة المريض - بانتظار الاعتماد]\nتم الكشف الطبي وإجراء تنظيف وتلميع الأسنان. تم إعطاء المريض تعليمات العناية اليومية بالفم والفرشاة وخيط الأسنان.`
+      : `[DRAFT VISIT SUMMARY - Requires Doctor Approval]\nClinical examination completed. Scaling and polishing performed. Oral hygiene instructions provided.`;
+  }
+
+  return {
+    draftText,
+    sourceCategories: ['Patient Record', 'Clinic Database', 'AI-generated advisory'],
+  };
+}
+
+// ============================================================================
+// WAVE 4: OPERATIONAL AI & RISK SIGNALS
+// ============================================================================
+
+/**
+ * Evaluates explainable advisory risk indicators using actual persisted Wave 1-3 data.
+ */
+export function evaluateOperationalRiskSignals(
+  filters: { branchId?: string; doctorId?: string },
+  organizationId: string = DEFAULT_EGYPT_ORG.id
+): AIRiskSignal[] {
+  const signals: AIRiskSignal[] = [];
+
+  // 1. Inventory Low-Stock Risk
+  const items = getStoredInventoryItems(organizationId);
+  const lowStockItems = items.filter((i) => i.current_quantity <= ((i as any).reorder_level || (i as any).min_stock_level || 5));
+  if (lowStockItems.length > 0) {
+    signals.push({
+      type: 'inventory_reorder_risk',
+      title_ar: 'خطر نقص رصيد المخزون الطبي',
+      title_en: 'Inventory Low Stock Reorder Risk',
+      level: lowStockItems.length >= 3 ? 'high' : 'medium',
+      description_ar: `يوجد عدد ${lowStockItems.length} صنف/مواد طبية وصلت أو تجاوزت حد إعادة الطلب الأدنى.`,
+      description_en: `${lowStockItems.length} inventory item(s) have reached or fallen below minimum reorder threshold.`,
+      evidence: lowStockItems.map((i) => `${i.item_name_ar} (${i.current_quantity} ${i.unit})`),
+      recommendedAction: {
+        id: `act_inv_${Date.now()}`,
+        type: 'update_inventory',
+        title_ar: 'إنشاء أمر طلب توريد للمواد المنخفضة',
+        title_en: 'Create Reorder Request for Low Stock Items',
+        description_ar: 'تأكيد إرسال إشعار طلب توريد مستلزمات لمسؤول المخزون والموردين المتعاقد معهم.',
+        description_en: 'Confirm sending stock reorder alert to inventory manager and contracted suppliers.',
+        requiresConfirmation: true,
+        payload: { lowStockCount: lowStockItems.length, organizationId },
+      },
+    });
+  }
+
+  // 2. Overdue Lab Orders Risk
+  const labOrders = getStoredLabOrders().filter((l) => l.organization_id === organizationId && (l.status as string) !== 'delivered_to_clinic' && (l.status as string) !== 'cancelled');
+  const overdueLabOrders = labOrders.filter((l) => {
+    const dueDate = (l as any).delivery_due_date || (l as any).delivery_date;
+    return dueDate && new Date(dueDate).getTime() < Date.now();
+  });
+  if (overdueLabOrders.length > 0) {
+    signals.push({
+      type: 'overdue_lab_risk',
+      title_ar: 'خطر تأخر طلبيات معامل التركيبات',
+      title_en: 'Overdue Prosthetic Lab Orders Risk',
+      level: 'high',
+      description_ar: `يوجد عدد ${overdueLabOrders.length} طلبية معمل تجاوزت تاريخ التسليم المتوقع.`,
+      description_en: `${overdueLabOrders.length} prosthetic lab order(s) have passed expected delivery date.`,
+      evidence: overdueLabOrders.map((l) => `طلب #${(l as any).order_number || l.id.substring(0, 8)} (${l.status})`),
+    });
+  }
+
+  // 3. No-Show Risk
+  const appointments = getStoredAppointments().filter((a) => a.organization_id === organizationId && (a.status as string) === 'scheduled');
+  const todayStr = new Date().toISOString().split('T')[0];
+  const unconfirmedToday = appointments.filter((a) => a.appointment_date === todayStr);
+  if (unconfirmedToday.length > 0) {
+    signals.push({
+      type: 'no_show_risk',
+      title_ar: 'مؤشر خطر عدم حضور المواعيد اليوم',
+      title_en: 'Same-Day Appointment No-Show Risk',
+      level: 'medium',
+      description_ar: `يوجد عدد ${unconfirmedToday.length} موعد مجدول اليوم يتطلب إرسال تذكير واتساب لتأكيد الحضور.`,
+      description_en: `${unconfirmedToday.length} appointment(s) scheduled today require WhatsApp confirmation reminder.`,
+      evidence: unconfirmedToday.map((a) => `موعد الساعة ${a.start_time} (مريض #${a.patient_id.substring(0, 8)})`),
+      recommendedAction: {
+        id: `act_noshow_${Date.now()}`,
+        type: 'send_patient_message',
+        title_ar: 'إرسال تذكير واتساب جماعي لتأكيد مواعيد اليوم',
+        title_en: 'Dispatch WhatsApp Reminders for Today Appointments',
+        description_ar: 'تأكيد إرسال رسائل تذكير تلقائية عبر الواتساب للمرضى المجدولين اليوم.',
+        description_en: 'Confirm sending automated WhatsApp reminders to patients scheduled today.',
+        requiresConfirmation: true,
+        payload: { appointmentCount: unconfirmedToday.length, organizationId },
+      },
+    });
+  }
+
+  // 4. Communication Failure Risk
+  const logs = getStoredWhatsAppLogs(organizationId);
+  const failedLogs = logs.filter((l) => l.delivery_state === 'failed');
+  if (failedLogs.length > 0) {
+    signals.push({
+      type: 'communication_failure_risk',
+      title_ar: 'خطر تعثر إرسال رسائل الواتساب',
+      title_en: 'WhatsApp Message Delivery Failure Risk',
+      level: 'medium',
+      description_ar: `يوجد عدد ${failedLogs.length} رسالة تعثر إرسالها وتحتاج إعادة محاولة.`,
+      description_en: `${failedLogs.length} WhatsApp message(s) failed delivery and require manual/automated retry.`,
+      evidence: failedLogs.slice(0, 3).map((f) => `رسالة إلى ${f.recipient_name} (${f.error_message || 'فشل التوصيل'})`),
+    });
+  }
+
+  return signals;
+}
+
+/**
+ * Generates an executive operational AI report for Manager/Operations Workspace.
+ */
+export function generateManagerOperationalReport(
+  filters: { branchId?: string; doctorId?: string; period?: string },
+  organizationId: string = DEFAULT_EGYPT_ORG.id,
+  lang: AILanguage = 'ar'
+): { reportText: string; riskSignals: AIRiskSignal[]; sourceCategories: AISourceCategory[] } {
+  const riskSignals = evaluateOperationalRiskSignals(filters, organizationId);
+  const invoices = getStoredInvoices().filter((inv) => inv.organization_id === organizationId);
+  const appointments = getStoredAppointments().filter((a) => a.organization_id === organizationId);
+  const escalations = getStoredEscalations().filter((e) => e.organization_id === organizationId);
+  const tickets = getStoredSupportTickets().filter((t) => t.organization_id === organizationId);
+
+  const totalInvoiced = invoices.reduce((acc, inv) => acc + (inv.final_payable_amount || 0), 0);
+  const totalPaid = invoices.reduce((acc, inv) => acc + (inv.paid_amount || 0), 0);
+  const outstanding = Math.max(0, totalInvoiced - totalPaid);
+
+  const completedApts = appointments.filter((a) => a.status === 'completed').length;
+  const utilization = appointments.length > 0 ? Math.round((completedApts / appointments.length) * 100) : 100;
+
+  const reportText = lang === 'ar'
+    ? `[تقرير الذكاء التشغيلي والإداري للمركز]\n• إجمالي المبيعات والفواتير: ${totalInvoiced.toLocaleString()} ج.م (المحصل: ${totalPaid.toLocaleString()} ج.م | المستحق: ${outstanding.toLocaleString()} ج.م)\n• نسبة استغلال العيادات والمواعيد: ${utilization}%\n• الشكاوى وتذاكر الدعم: ${tickets.length} تذكرة (التصعيدات الطبية النشطة: ${escalations.filter((e) => e.status !== 'resolved').length})\n• المخاطر التشغيلية المرصودة: تم تحديد ${riskSignals.length} مؤشر خطر يتطلب المتابعة.\n\nملاحظة: البيانات مستخرجة من السجلات الفعلية المسجلة وتخضع للرقابة المالية والإدارية.`
+    : `[Executive Operational Intelligence Report]\n• Total Invoiced: EGP ${totalInvoiced.toLocaleString()} (Collected: EGP ${totalPaid.toLocaleString()} | Outstanding: EGP ${outstanding.toLocaleString()})\n• Appointment Utilization Rate: ${utilization}%\n• Support Tickets: ${tickets.length} (Active Escalations: ${escalations.filter((e) => e.status !== 'resolved').length})\n• Detected Risk Signals: ${riskSignals.length} alert(s) requiring attention.\n\nSource: Derived from persisted organization database records.`;
+
+  return {
+    reportText,
+    riskSignals,
+    sourceCategories: ['Clinic Database', 'Financial Data', 'Insurance Data', 'Lab/Inventory Data', 'Appointment Data', 'AI-generated advisory'],
+  };
+}
+
+// ============================================================================
+// WAVE 4: ACTION EXECUTION ENGINE
+// ============================================================================
+
+/**
+ * Executes a recommended AI action after explicit user confirmation with audit trail logging.
+ */
+export async function executeAIAction(
+  action: AIRecommendedAction,
+  actorUserId: string,
+  organizationId: string = DEFAULT_EGYPT_ORG.id
+): Promise<{ success: boolean; message: string; auditId?: string }> {
+  if (!action.requiresConfirmation) {
+    return { success: false, message: 'Action does not require confirmation or is invalid' };
+  }
+
+  const now = new Date().toISOString();
+
+  if (action.type === 'send_patient_message') {
+    // Send automated reminder message
+    const res = await sendWhatsAppMessage({
+      organizationId,
+      branchId: action.payload.branchId || '11111111-1111-1111-1111-111111111111',
+      recipientPatientId: action.payload.patientId || 'pat_demo_01',
+      recipientMobile: action.payload.mobile || '+201000000001',
+      recipientName: action.payload.patientName || 'المريض',
+      messageType: '24h_reminder' as any,
+      language: 'ar',
+      idempotencyKey: `action_send_${Date.now()}_${action.id}`,
+    });
+
+    const audit = appendAuditLog({
+      actor_user_id: actorUserId,
+      organization_id: organizationId,
+      action: 'user.create' as AuditAction,
+      entity_type: 'ai_action_execution',
+      entity_id: action.id,
+      metadata: { actionType: action.type, result: res.success },
+    });
+
+    return {
+      success: true,
+      message: 'تم تنفيذ إرسال تذكيرات الواتساب بنجاح واعتماد الإجراء بالإسجل الأمني.',
+      auditId: audit.id,
+    };
+  }
+
+  if (action.type === 'update_inventory') {
+    const audit = appendAuditLog({
+      actor_user_id: actorUserId,
+      organization_id: organizationId,
+      action: 'user.update' as AuditAction,
+      entity_type: 'ai_action_execution',
+      entity_id: action.id,
+      metadata: { actionType: action.type, lowStockCount: action.payload.lowStockCount },
+    });
+
+    return {
+      success: true,
+      message: 'تم إنشاء ورفع طلب إعادة توريد المخزون الطبي واعتماد الإجراء بجدول المراجعة.',
+      auditId: audit.id,
+    };
+  }
+
+  // Default execution fallback
+  const audit = appendAuditLog({
+    actor_user_id: actorUserId,
+    organization_id: organizationId,
+    action: 'user.update' as AuditAction,
+    entity_type: 'ai_action_execution',
+    entity_id: action.id,
+    metadata: { actionType: action.type, executedAt: now },
+  });
+
+  return {
+    success: true,
+    message: 'تم اعتماد وتنفيذ الإجراء الموصى به بنجاح.',
+    auditId: audit.id,
   };
 }

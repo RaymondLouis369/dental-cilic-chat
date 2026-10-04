@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { isDevEnv } from '../../lib/env';
 import { Shield, KeyRound, Building2, CheckCircle2, AlertCircle, Sparkles, ArrowRightLeft } from 'lucide-react';
 import { useAuth } from './AuthContext';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -14,8 +15,8 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToPatient }) => {
   const { t, language, toggleLanguage } = useLanguage();
 
   // In development/testing, prefill for frictionless local testing; in production, keep strictly empty
-  const [email, setEmail] = useState(() => (import.meta.env.DEV ? 'manager@dental-demo.eg' : ''));
-  const [password, setPassword] = useState(() => (import.meta.env.DEV ? 'dental123' : ''));
+  const [email, setEmail] = useState(() => (isDevEnv() ? 'manager@dental-demo.eg' : ''));
+  const [password, setPassword] = useState(() => (isDevEnv() ? 'dental123' : ''));
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -33,7 +34,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToPatient }) => {
   };
 
   const handleSelectDemoUser = (roleKey: RoleKey) => {
-    if (!import.meta.env.DEV) return;
+    if (!isDevEnv()) return;
     const cred = DEMO_STAFF_CREDENTIALS[roleKey];
     setEmail(cred.email);
     setPassword('dental123');
@@ -129,7 +130,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToPatient }) => {
           </form>
 
           {/* Quick Staff Persona Switcher (STRICTLY DEVELOPMENT / PREVIEW TESTING ONLY) */}
-          {import.meta.env.DEV && (
+          {isDevEnv() && (
             <div className="mt-8 pt-6 border-t border-slate-200">
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">

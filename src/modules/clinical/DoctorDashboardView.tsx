@@ -33,7 +33,13 @@ import {
   Eye,
   Activity,
   ChevronRight,
+  LayoutList,
+  CalendarDays,
 } from 'lucide-react';
+import { AppointmentCalendarView } from '../scheduling/AppointmentCalendarView';
+import { getStoredBranches, getStoredStaffUsers } from '../../lib/storage';
+import { DoctorAIAssistantModal } from '../ai/DoctorAIAssistantModal';
+import { Bot } from 'lucide-react';
 
 interface DoctorDashboardViewProps {
   onSelectPatient: (patientId: string, initialTab?: string) => void;
@@ -44,9 +50,15 @@ export const DoctorDashboardView: React.FC<DoctorDashboardViewProps> = ({
 }) => {
   const { isRtl } = useLanguage();
   const { session } = useAuth();
+  const [doctorViewMode, setDoctorViewMode] = useState<'list' | 'calendar'>('list');
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [typeFilter, setTypeFilter] = useState<string>('all');
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState<string>(
+    new Date().toISOString().split('T')[0]
+  );
   const [refreshKey, setRefreshKey] = useState(0);
+  const [isDoctorAiOpen, setIsDoctorAiOpen] = useState(false);
 
   const doctorId = session?.profile.id || 'prof_doc_01';
   const branchId = session?.profile.branch_id || '11111111-1111-1111-1111-111111111111';
@@ -91,6 +103,7 @@ export const DoctorDashboardView: React.FC<DoctorDashboardViewProps> = ({
   // Filter appointments
   const filteredAppointments = summary.todayAppointments.filter((apt) => {
     if (statusFilter !== 'all' && apt.status !== statusFilter) return false;
+    if (typeFilter !== 'all' && apt.appointment_type !== typeFilter) return false;
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       const p = getPatientForAppointment(apt);
@@ -125,6 +138,13 @@ export const DoctorDashboardView: React.FC<DoctorDashboardViewProps> = ({
         </div>
 
         <div className="flex items-center gap-3">
+          <button
+            onClick={() => setIsDoctorAiOpen(true)}
+            className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl flex items-center gap-2 shadow-xs transition-colors"
+          >
+            <Bot className="w-4 h-4 text-indigo-200" />
+            {isRtl ? 'المساعد الذكي السريري' : 'Doctor AI Assistant'}
+          </button>
           <span className="text-xs font-mono font-bold bg-blue-950/80 px-3 py-1.5 rounded-lg border border-blue-800 text-blue-300">
             {new Date().toLocaleDateString(isRtl ? 'ar-EG' : 'en-US', {
               weekday: 'long',
@@ -363,109 +383,183 @@ export const DoctorDashboardView: React.FC<DoctorDashboardViewProps> = ({
               </h3>
             </div>
 
-            {/* Filter Tabs */}
-            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg">
-              {['all', 'confirmed', 'arrived', 'with_doctor', 'completed'].map((st) => (
+            <div className="flex flex-wrap items-center gap-2">
+              {/* View Mode Toggle */}
+              <div className="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200">
                 <button
-                  key={st}
                   type="button"
-                  onClick={() => setStatusFilter(st)}
-                  className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all ${
-                    statusFilter === st
-                      ? 'bg-white text-blue-700 shadow-2xs'
+                  onClick={() => setDoctorViewMode('list')}
+                  className={`px-2 py-1 rounded text-xs font-bold flex items-center gap-1 transition-all ${
+                    doctorViewMode === 'list'
+                      ? 'bg-white text-blue-800 shadow-2xs'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  {st === 'all'
-                    ? isRtl ? 'الكل' : 'All'
-                    : st === 'confirmed'
-                    ? isRtl ? 'مؤكد' : 'Confirmed'
-                    : st === 'arrived'
-                    ? isRtl ? 'وصل' : 'Arrived'
-                    : st === 'with_doctor'
-                    ? isRtl ? 'بالجلسة' : 'In Session'
-                    : isRtl ? 'مكتمل' : 'Completed'}
+                  <LayoutList className="w-3.5 h-3.5" />
+                  <span>{isRtl ? 'قائمة' : 'List'}</span>
                 </button>
-              ))}
+                <button
+                  type="button"
+                  onClick={() => setDoctorViewMode('calendar')}
+                  className={`px-2 py-1 rounded text-xs font-bold flex items-center gap-1 transition-all ${
+                    doctorViewMode === 'calendar'
+                      ? 'bg-white text-blue-800 shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <CalendarDays className="w-3.5 h-3.5" />
+                  <span>{isRtl ? 'تقويم' : 'Calendar'}</span>
+                </button>
+              </div>
+
+              {/* Type Filter */}
+              <select
+                value={typeFilter}
+                onChange={(e) => setTypeFilter(e.target.value)}
+                className="px-2 py-1 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-700"
+              >
+                <option value="all">{isRtl ? 'كل الأنواع' : 'All Types'}</option>
+                <option value="consultation">{isRtl ? 'استشارة' : 'Consultation'}</option>
+                <option value="treatment">{isRtl ? 'علاج' : 'Treatment'}</option>
+                <option value="follow_up">{isRtl ? 'متابعة' : 'Follow-Up'}</option>
+                <option value="cleaning">{isRtl ? 'تنظيف' : 'Cleaning'}</option>
+                <option value="prosthetic">{isRtl ? 'تركيبات' : 'Prosthetic'}</option>
+                <option value="orthodontic">{isRtl ? 'تقويم' : 'Orthodontic'}</option>
+                <option value="emergency">{isRtl ? 'طوارئ' : 'Emergency'}</option>
+                <option value="general">{isRtl ? 'عام' : 'General'}</option>
+              </select>
+
+              {/* Filter Tabs */}
+              <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg">
+                {['all', 'confirmed', 'arrived', 'with_doctor', 'completed'].map((st) => (
+                  <button
+                    key={st}
+                    type="button"
+                    onClick={() => setStatusFilter(st)}
+                    className={`px-2 py-0.5 rounded text-[11px] font-bold transition-all ${
+                      statusFilter === st
+                        ? 'bg-white text-blue-700 shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    {st === 'all'
+                      ? isRtl ? 'الكل' : 'All'
+                      : st === 'confirmed'
+                      ? isRtl ? 'مؤكد' : 'Confirmed'
+                      : st === 'arrived'
+                      ? isRtl ? 'وصل' : 'Arrived'
+                      : st === 'with_doctor'
+                      ? isRtl ? 'بالجلسة' : 'In Session'
+                      : isRtl ? 'مكتمل' : 'Completed'}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
-          {/* Search Bar */}
-          <div className="relative">
-            <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
-            <input
-              type="text"
-              placeholder={
-                isRtl ? 'بحث باسم المريض أو كود الملف السريري...' : 'Search by patient name or code...'
-              }
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full text-xs pl-9 pr-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-hidden"
-            />
-          </div>
-
-          {/* Table */}
-          {filteredAppointments.length === 0 ? (
-            <div className="p-8 text-center text-slate-400 text-xs">
-              {isRtl ? 'لا توجد مواعيد مطابقة لهذا الفلتر اليوم.' : 'No matching appointments today.'}
+          {doctorViewMode === 'calendar' ? (
+            <div className="pt-2">
+              <AppointmentCalendarView
+                appointments={getStoredAppointments()}
+                patients={allPatients}
+                doctors={getStoredStaffUsers().filter((s) => s.id === doctorId)}
+                branches={getStoredBranches()}
+                selectedDate={selectedCalendarDate}
+                onSelectDate={setSelectedCalendarDate}
+                selectedBranchId={branchId}
+                selectedDoctorId={doctorId}
+                onStatusChange={(aptId, st) => {
+                  updateAppointmentStatus(aptId, st);
+                  setRefreshKey((k) => k + 1);
+                }}
+              />
             </div>
           ) : (
-            <div className="space-y-2.5">
-              {filteredAppointments.map((apt) => {
-                const pt = getPatientForAppointment(apt);
-                const ptName = getPatientName(pt);
-                const srvName = getServiceNameForAppointment(apt);
+            <>
+              {/* Search Bar */}
+              <div className="relative">
+                <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder={
+                    isRtl ? 'بحث باسم المريض أو كود الملف السريري...' : 'Search by patient name or code...'
+                  }
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full text-xs pl-9 pr-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-hidden"
+                />
+              </div>
 
-                return (
-                  <div
-                    key={apt.id}
-                    className="p-3.5 rounded-xl border border-slate-200 hover:border-blue-300 hover:bg-slate-50/80 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-                  >
-                    <div className="flex items-start gap-3">
-                      <span className="font-mono text-xs font-black text-slate-800 bg-slate-100 px-2 py-1 rounded">
-                        {apt.start_time}
-                      </span>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h4 className="text-xs font-bold text-slate-900">{ptName}</h4>
-                          <span className="font-mono text-[10px] text-slate-400">
-                            #{pt?.patient_code || 'PAT-000'}
+              {/* Table */}
+              {filteredAppointments.length === 0 ? (
+                <div className="p-8 text-center text-slate-400 text-xs">
+                  {isRtl ? 'لا توجد مواعيد مطابقة لهذا الفلتر اليوم.' : 'No matching appointments today.'}
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  {filteredAppointments.map((apt) => {
+                    const pt = getPatientForAppointment(apt);
+                    const ptName = getPatientName(pt);
+                    const srvName = getServiceNameForAppointment(apt);
+
+                    return (
+                      <div
+                        key={apt.id}
+                        className="p-3.5 rounded-xl border border-slate-200 hover:border-blue-300 hover:bg-slate-50/80 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                      >
+                        <div className="flex items-start gap-3">
+                          <span className="font-mono text-xs font-black text-slate-800 bg-slate-100 px-2 py-1 rounded">
+                            {apt.start_time}
                           </span>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h4 className="text-xs font-bold text-slate-900">{ptName}</h4>
+                              <span className="font-mono text-[10px] text-slate-400">
+                                #{pt?.patient_code || 'PAT-000'}
+                              </span>
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200 capitalize">
+                                {apt.appointment_type || 'general'}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-slate-500 mt-0.5">{srvName}</p>
+                            {apt.notes && (
+                              <p className="text-[10px] text-slate-400 italic mt-0.5">"{apt.notes}"</p>
+                            )}
+                          </div>
                         </div>
-                        <p className="text-[11px] text-slate-500 mt-0.5">{srvName}</p>
+
+                        <div className="flex items-center gap-2 self-end sm:self-auto">
+                          <span
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
+                              apt.status === 'completed'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : apt.status === 'with_doctor'
+                                ? 'bg-blue-100 text-blue-800'
+                                : apt.status === 'arrived'
+                                ? 'bg-amber-100 text-amber-800'
+                                : 'bg-slate-100 text-slate-700'
+                            }`}
+                          >
+                            {apt.status}
+                          </span>
+
+                          <button
+                            type="button"
+                            id={`open-patient-file-${apt.patient_id}`}
+                            onClick={() => onSelectPatient(apt.patient_id, 'chart')}
+                            className="p-1.5 bg-slate-100 hover:bg-blue-600 hover:text-white text-slate-700 rounded-lg transition-all text-xs font-bold flex items-center gap-1"
+                            title={isRtl ? 'فتح الملف السريري' : 'Open File'}
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                            <span className="text-[11px]">{isRtl ? 'الملف' : 'File'}</span>
+                          </button>
+                        </div>
                       </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 self-end sm:self-auto">
-                      <span
-                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
-                          apt.status === 'completed'
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : apt.status === 'with_doctor'
-                            ? 'bg-blue-100 text-blue-800'
-                            : apt.status === 'arrived'
-                            ? 'bg-amber-100 text-amber-800'
-                            : 'bg-slate-100 text-slate-700'
-                        }`}
-                      >
-                        {apt.status}
-                      </span>
-
-                      <button
-                        type="button"
-                        id={`open-patient-file-${apt.patient_id}`}
-                        onClick={() => onSelectPatient(apt.patient_id, 'chart')}
-                        className="p-1.5 bg-slate-100 hover:bg-blue-600 hover:text-white text-slate-700 rounded-lg transition-all text-xs font-bold flex items-center gap-1"
-                        title={isRtl ? 'فتح الملف السريري' : 'Open File'}
-                      >
-                        <Eye className="w-3.5 h-3.5" />
-                        <span className="text-[11px]">{isRtl ? 'الملف' : 'File'}</span>
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
           )}
         </div>
 
@@ -611,6 +705,11 @@ export const DoctorDashboardView: React.FC<DoctorDashboardViewProps> = ({
           </div>
         </div>
       </div>
+
+      <DoctorAIAssistantModal
+        isOpen={isDoctorAiOpen}
+        onClose={() => setIsDoctorAiOpen(false)}
+      />
     </div>
   );
 };

@@ -1,5 +1,5 @@
 # Dental Clinic & Dental Center Management Platform — Egypt
-## Phases 01–09: Foundation, Identity, Operations, Clinical, Insurance, Consents, Lab QR Logistics, Billing, Commissions, Supplier Management, Manager Financial Dashboard, Centralized Notifications, Recall/Follow-up & Complaints Management
+## Phases 01–11 & Wave 01–05: Foundation, Identity, Operations, Clinical, Insurance, Consents, Lab QR Logistics, Billing, Commissions, Supplier Management, Manager Financial Dashboard, Centralized Notifications, Recall/Follow-up, Complaints Management, AI Router, Appointment Queue Engine, Wave 1 Finance/Wallet/Loyalty/Claims, Wave 2 Advanced Prosthetics, Lab Operations & Inventory, Wave 3 Communication Center & Management BI, Wave 4 Advanced AI Intelligence, and Wave 5 Production Launch — [FINAL STATUS: PRODUCTION READY]
 
 A modern, cloud-native, multi-tenant Software-as-a-Service (SaaS) application built for single dental clinics and multi-branch dental centers operating in the **Arab Republic of Egypt**.
 
@@ -103,6 +103,27 @@ A modern, cloud-native, multi-tenant Software-as-a-Service (SaaS) application bu
 3. **Internal Notes Privacy & Patient Safeguards (`complaintStorage.ts`):** Internal staff notes (`is_internal: true`) strictly excluded from patient portal views via `forPatient: true` filtering.
 4. **Automated Complaint Notifications & Task Handoffs:** Emits real-time notifications for ticket creation, replies, escalations, and resolution with linked urgent Reception Tasks for critical tickets.
 
+### Phase 11: Appointment Engine, Calendar, Booking, QR Check-In, Waiting Queue & Reminders
+1. **Phase 11.1 — Appointment & Scheduling Engine (`appointmentService.ts`):** Dynamic slot generation from doctor working shifts, break blackout windows, double-booking prevention, overlap detection, multi-status lifecycle management, and role-authorized queries.
+2. **Phase 11.2 — Appointment Calendar & Reception Workflow UI:** Day/Week/Month calendar grids (`AppointmentCalendarView.tsx`), doctor schedule timetables (`DoctorScheduleView.tsx`), walk-in registration (`WalkInModal.tsx`), and reschedule modals (`RescheduleAppointmentModal.tsx`).
+3. **Phase 11.3 — Patient Appointment Booking & Cryptographic QR Check-in:** Patient portal booking modal (`PatientAppointmentBookingModal.tsx`) and 128-bit cryptographically secure QR check-in tokens (`CHK-APT-[32_HEX_CHARS]`, 40 chars total) with Web Crypto API / `crypto.randomBytes(16)` entropy, token replay protection, and reception QR scanning (`PatientLookupModal.tsx`).
+4. **Phase 11.4 — Appointment Queue & Waiting Room Management:** Real-time Waiting Room dashboard (`ReceptionWaitingRoom.tsx`), doctor chair queue, doctor *"Call Next Patient"* action (`callNextQueuePatient`), patient queue position tracking, and deterministic ordering rule (`with_doctor` #1 $\rightarrow$ `check_in_time` ascending $\rightarrow$ `start_time` ascending tie-breaker $\rightarrow$ appointment ID `localeCompare`).
+5. **Phase 11.5 — Appointment Confirmation, Reminders & No-Show Follow-up:** Patient and reception visit confirmation, automated bilingual 24-hour and same-day reminders (`sendAppointmentReminders`) with duplicate prevention state flags, unconfirmed appointment alert banners, reschedule reminder invalidation, and automated no-show $\rightarrow$ recall follow-up plan creation (`clinicalStorage`) without duplicate recall records.
+
+### Wave 01: Patient Finance, Prepaid Wallet, Loyalty Rewards, Insurance Prior Approvals & Claims Workflow
+1. **Patient Financial Portal (`PatientFinancialPortal.tsx`):** Comprehensive patient portal view displaying current outstanding balance, total invoiced, total paid, insurance covered amount, patient copay, prepaid wallet balance, loyalty points, chronological account statement timeline, printable receipts, and active insurance coverage.
+2. **Prepaid Patient Wallet (`financeAndInsuranceStorage.ts`, `PatientWalletModal.tsx`):** Prepaid balance top-up, direct invoice payment with automatic billing log integration, audited manual adjustments, and strict negative balance prevention.
+3. **Loyalty Rewards Program (`financeAndInsuranceStorage.ts`):** Automated point accumulation on paid invoices with configurable rules, duplicate earn prevention, point redemption, and audited manual point adjustments.
+4. **Insurance Prior Approval Workflow (`InsuranceClaimsModal.tsx`):** Pre-authorization request lifecycle (`draft` $\rightarrow$ `pending_approval` $\rightarrow$ `approved` / `rejected`), status tracking, and copay/coverage calculation integration.
+5. **Insurance Claims & Batch Settlement Posting (`InsuranceClaimsModal.tsx`):** Claim generation from insured invoices, batch claim aggregation, settlement payout posting, write-off tracking, and unpaid rejected shortfall transfer to patient balance.
+
+### Wave 02: Advanced Prosthetics, Lab Operations, Trial Fitting & Inventory Management
+1. **Advanced Prosthetic Orders & Specs:** Extended manufacturing specs (Zirconia, Monolithic, Try-In/Final, Pontic, Abutment) with lifecycle status tracking (`sent_to_lab` $\rightarrow$ `in_production` $\rightarrow$ `delivered` $\rightarrow$ `fitted`).
+2. **Lab Modification Requests & Trial Fitting (`ProstheticFittingAndModificationModal.tsx`):** Structured modification requests, lab responses, and trial/final fitting logs auto-synced to order statuses.
+3. **Multi-Branch Inventory & Stock Ledger (`src/lib/inventoryStorage.ts`, `InventoryManagementView.tsx`):** Multi-branch item catalog, stock receiving from suppliers, inter-branch transfers with negative stock prevention, wastage logging, and auditable transaction ledger.
+4. **Procedure Material Consumption & Cost Sync (`ProcedureMaterialConsumptionModal.tsx`):** Direct procedure stock deduction with automatic material cost logging synced to billing net profit calculations.
+5. **Low Stock & Overdue Lab Alerts:** Automated deduplicated alerts with 24-hour throttle windows and Manager Valuation & Consumption Reports.
+
 ---
 
 ## Quick Start
@@ -122,7 +143,8 @@ The application will be running on `http://localhost:3000`.
 ```bash
 npm test
 ```
-Executes all 143 automated tests across 21 test suites. Or open the built-in interactive **Acceptance Test Runner** tab in the top navigation bar.
+Executes all 321 automated tests across 33 test files. Or open the built-in interactive **Acceptance Test Runner** tab in the top navigation bar.
+
 
 ### 4. Production Build & Linting
 ```bash
@@ -139,6 +161,10 @@ SQL migration files are located in `/supabase/migrations/`:
 - `20260912000002_seed_egypt_demo_data.sql`: Seed data for the Egyptian dental center, branches, roles, permissions, and staff accounts.
 - `20260912000003_phase2_patient_identity.sql`: Phase 2 patient identity, family structures, and accounts.
 - `20260912000009_phase9_1_1_notifications_schema.sql`: Phase 09.1.1 notifications schema & RLS policies.
+- `20260912000012_wave2_inventory_prosthetics_schema.sql`: Wave 2 inventory & prosthetics schema.
+- `20260912000013_wave2_remediation_branch_rls_concurrency.sql`: Wave 2 branch RLS, role scope isolation & atomic PostgreSQL stock concurrency function.
+- `20260912000014_wave3_communication_bi_schema.sql`: Wave 3 Communication Center, WhatsApp logs, templates, patient preferences & BI schema.
+
 
 To apply migrations to your Supabase project:
 ```bash
@@ -193,4 +219,10 @@ For in-depth architectural breakdowns, database schema descriptions, security co
 - [`IMPLEMENTATION_NOTES_PHASE_09_1.md`](./IMPLEMENTATION_NOTES_PHASE_09_1.md) — Centralized Notifications Foundation, Multi-Role & Event Triggers
 - [`IMPLEMENTATION_NOTES_PHASE_09_2.md`](./IMPLEMENTATION_NOTES_PHASE_09_2.md) — Recall & Follow-up Management System, Workspaces, Contact Logging & Task Handoffs
 - [`IMPLEMENTATION_NOTES_PHASE_09.md`](./IMPLEMENTATION_NOTES_PHASE_09.md) — Phase 09 Final Summary: Notifications Engine, Recall/Follow-up & Complaints Management Workflows
+- [`IMPLEMENTATION_NOTES_PHASE_11.md`](./IMPLEMENTATION_NOTES_PHASE_11.md) — Phase 11 Final Summary: Appointment Engine, Calendar, Booking, Cryptographic QR Check-In, Deterministic Waiting Queue & Automated Reminders
+- [`IMPLEMENTATION_NOTES_WAVE_01.md`](./IMPLEMENTATION_NOTES_WAVE_01.md) — Wave 01 Final Summary: Patient Financial Portal, Prepaid Wallet, Loyalty Rewards, Insurance Prior Approvals & Claims/Settlement Workflows
+- [`IMPLEMENTATION_NOTES_WAVE_02.md`](./IMPLEMENTATION_NOTES_WAVE_02.md) — Wave 02 Final Summary: Advanced Prosthetics, Lab Operations, Trial Fitting & Multi-Branch Inventory Workflows
+- [`IMPLEMENTATION_NOTES_WAVE_03.md`](./IMPLEMENTATION_NOTES_WAVE_03.md) — Wave 03 Final Summary: Communication Center, WhatsApp Integration, Patient Preferences & Executive Management BI Analytics Dashboard
+- [`IMPLEMENTATION_NOTES_WAVE_04.md`](./IMPLEMENTATION_NOTES_WAVE_04.md) — Wave 04 Final Summary: Advanced AI Clinical & Operational Intelligence, Doctor AI Workspace, Operations Risk Signals & Action Confirmation Workflows
+- [`IMPLEMENTATION_NOTES_WAVE_05.md`](./IMPLEMENTATION_NOTES_WAVE_05.md) — Wave 05 Final Summary: Security Audit, Rate Limiting, PWA Production Build, Observability (/api/health) & Production Launch Verification [FINAL STATUS: PRODUCTION READY]
 

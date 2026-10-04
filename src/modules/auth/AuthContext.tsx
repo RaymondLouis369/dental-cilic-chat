@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { isDevEnv } from '../../lib/env';
 import {
   AuthUserSession,
   RoleKey,
@@ -92,7 +93,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // ========================================================================
     // PRODUCTION SECURITY ENFORCEMENT
     // ========================================================================
-    if (!import.meta.env.DEV) {
+    if (!isDevEnv()) {
       // 1. Explicitly reject demo accounts and demo passwords in production
       const isDemoEmail = email.trim().toLowerCase().endsWith('@dental-demo.eg');
       const isDemoPassword = password === 'dental123' || password === 'EgyptDental2026!';
@@ -290,7 +291,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const switchDemoRole = (roleKey: RoleKey) => {
     // Strictly prohibited in production environments
-    if (!import.meta.env.DEV) {
+    if (!isDevEnv()) {
       console.error(
         'SECURITY ALERT: switchDemoRole was invoked in production. Role switching is strictly prohibited in production builds.'
       );

@@ -1,4 +1,5 @@
 import React from 'react';
+import { isDevEnv } from '../../lib/env';
 import {
   LayoutDashboard,
   Building2,
@@ -18,6 +19,9 @@ import {
   FileSpreadsheet,
   Shield,
   Tag,
+  Boxes,
+  MessageSquare,
+  Sparkles,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -26,6 +30,8 @@ import { RoleBadge } from './RoleBadge';
 
 export type NavTab =
   | 'dashboard'
+  | 'managerAI'
+  | 'doctorAI'
   | 'reception'
   | 'scheduling'
   | 'services'
@@ -33,6 +39,8 @@ export type NavTab =
   | 'insurance'
   | 'customServices'
   | 'suppliers'
+  | 'inventory'
+  | 'communication'
   | 'organization'
   | 'branches'
   | 'users'
@@ -44,6 +52,7 @@ export type NavTab =
   | 'labWorkspace'
   | 'deliveryWorkspace'
   | 'tests';
+
 
 interface SidebarProps {
   currentTab: NavTab;
@@ -64,6 +73,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, onSelectTab }) => 
       case 'center_manager':
         return [
           { id: 'dashboard' as NavTab, label: t.nav.dashboard, icon: LayoutDashboard },
+          { id: 'managerAI' as NavTab, label: 'الذكاء التنفيذي للإدارة', icon: Sparkles, badge: 'Wave 4' },
+          { id: 'doctorAI' as NavTab, label: 'المساعد الطبي الذكي', icon: Sparkles, badge: 'Wave 4' },
           { id: 'doctorWorkspace' as NavTab, label: t.nav.doctorWorkspace, icon: Stethoscope, badge: 'Phase 4' },
           { id: 'reception' as NavTab, label: t.nav.reception, icon: UserCheck, badge: 'Phase 3' },
           { id: 'scheduling' as NavTab, label: t.nav.scheduling, icon: CalendarDays },
@@ -72,7 +83,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, onSelectTab }) => 
           { id: 'insurance' as NavTab, label: t.nav.insurance, icon: Shield },
           { id: 'customServices' as NavTab, label: t.nav.customServices, icon: Tag },
           { id: 'suppliers' as NavTab, label: t.nav.suppliers, icon: Truck, badge: 'Phase 8' },
+          { id: 'inventory' as NavTab, label: 'المخزون والمستلزمات', icon: Boxes, badge: 'Wave 2' },
+          { id: 'communication' as NavTab, label: 'مركز التواصل والواتساب', icon: MessageSquare, badge: 'Wave 3' },
           { id: 'organization' as NavTab, label: t.nav.organization, icon: Building2 },
+
           { id: 'branches' as NavTab, label: t.nav.branches, icon: GitBranch },
           { id: 'users' as NavTab, label: t.nav.users, icon: Users },
           { id: 'permissions' as NavTab, label: t.nav.permissions, icon: ShieldCheck },
@@ -89,7 +103,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, onSelectTab }) => 
           { id: 'pricing' as NavTab, label: t.nav.pricing, icon: FileSpreadsheet },
           { id: 'insurance' as NavTab, label: t.nav.insurance, icon: Shield },
           { id: 'suppliers' as NavTab, label: t.nav.suppliers, icon: Truck, badge: 'Phase 8' },
+          { id: 'inventory' as NavTab, label: 'المخزون والمستلزمات', icon: Boxes, badge: 'Wave 2' },
+          { id: 'communication' as NavTab, label: 'مركز التواصل والواتساب', icon: MessageSquare, badge: 'Wave 3' },
           { id: 'branches' as NavTab, label: t.nav.branches, icon: GitBranch },
+
           { id: 'users' as NavTab, label: t.nav.users, icon: Users },
           { id: 'operations' as NavTab, label: t.nav.operations, icon: Clock },
           { id: 'tests' as NavTab, label: t.nav.testsRunner, icon: CheckCircle },
@@ -105,6 +122,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, onSelectTab }) => 
       case 'doctor':
         return [
           { id: 'doctorWorkspace' as NavTab, label: t.nav.doctorWorkspace, icon: Stethoscope, badge: 'Phase 4' },
+          { id: 'doctorAI' as NavTab, label: 'المساعد الطبي الذكي', icon: Sparkles, badge: 'Wave 4' },
           { id: 'dashboard' as NavTab, label: t.nav.dashboard, icon: LayoutDashboard },
           { id: 'reception' as NavTab, label: t.nav.reception, icon: UserCheck },
           { id: 'scheduling' as NavTab, label: t.nav.scheduling, icon: CalendarDays },
@@ -202,7 +220,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, onSelectTab }) => 
       </div>
 
       {/* Role Switcher Drawer: STRICTLY DEVELOPMENT / PREVIEW TESTING ONLY (Omitted in Production) */}
-      {import.meta.env.DEV && (
+      {isDevEnv() && (
         <div className="p-3 bg-amber-50/70 border-t border-amber-200 text-xs">
           <div className="flex items-center justify-between text-amber-950 font-semibold mb-2">
             <span className="flex items-center gap-1 text-[11px]">
