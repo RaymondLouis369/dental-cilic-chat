@@ -28,23 +28,31 @@ export type AILanguage = 'ar' | 'en';
 
 export interface AIRecommendedAction {
   id: string;
-  type:
-    | 'reschedule_appointment'
-    | 'send_patient_message'
-    | 'update_inventory'
-    | 'update_treatment_plan'
-    | 'resolve_escalation'
-    | 'update_complaint';
-  title_ar: string;
-  title_en: string;
-  description_ar: string;
-  description_en: string;
-  requiresConfirmation: true;
-  payload: Record<string, any>;
+  type?: string;
+  actionType?: string;
+  title_ar?: string;
+  title_en?: string;
+  titleAr?: string;
+  titleEn?: string;
+  description_ar?: string;
+  description_en?: string;
+  descriptionAr?: string;
+  descriptionEn?: string;
+  requiresConfirmation?: boolean;
+  requiresApproval?: boolean;
+  status?: string;
+  createdAt?: string;
+  payload?: Record<string, any>;
+  parameters?: Record<string, any>;
+  targetEntity?: string;
+  targetId?: string;
+  sourceAttribution?: string;
   executed?: boolean;
   executedAt?: string;
   executedBy?: string;
 }
+
+export type AIActionProposal = AIRecommendedAction;
 
 export interface AIRiskSignal {
   type:
